@@ -122,7 +122,6 @@ function httpsPost(url, data, headers = {}) {
 async function getGeminiResponse(text, audioBase64) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
-    // 👇👇 এআই-কে ট্রেইন করার নির্দেশিকা 👇👇
     const training_text = `তুমি "Motolock" (মটোলক) নামক ই-কমার্স পেজের একজন স্মার্ট কাস্টমার সাপোর্ট বট। তোমার কাজ হলো কাস্টমারদের প্রশ্নের সুন্দরভাবে রিপ্লাই দেওয়া এবং জিপিএস প্রোডাক্ট বিক্রি করতে সাহায্য করা। নিচের তথ্যগুলো তোমার নলেজবেস। 
 
 নির্দেশনা:
@@ -190,6 +189,10 @@ async function getGeminiResponse(text, audioBase64) {
 
     try {
         const data = await httpsPost(url, payload);
+        
+        // জেমিনির আসল সমস্যাটি দেখার জন্য লগ যুক্ত করা হলো
+        console.log("Gemini API Full Response:", JSON.stringify(data, null, 2));
+        
         if (data.candidates && data.candidates.length > 0) {
             return data.candidates[0].content.parts[0].text;
         }

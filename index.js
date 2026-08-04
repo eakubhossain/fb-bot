@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
+// আপনার দেওয়া ২টি API Key
 const GEMINI_API_KEYS = [
     "AQ.Ab8RN6LH20HSC8McNFe3PcQPMPuHpzZZ3l4Or-_hPneAktlYNA",
     "AQ.Ab8RN6Ib5St33jrpnqF1RDKtpNj_dRTYuyD_h9zVHHFIdqNDsA"
@@ -74,11 +75,11 @@ app.post('/webhook', async (req, res) => {
 
                 if (userMessage || audioBase64) {
                     try {
-                        if(userMessage) console.log(`[কাস্টমার]: ${userMessage}`);
-                        if(audioBase64) console.log(`[কাস্টমার একটি ভয়েস মেসেজ পাঠিয়েছে]`);
+                        if (userMessage) console.log(`[Customer]: ${userMessage}`);
+                        if (audioBase64) console.log(`[Customer sent a Voice Message]`);
 
                         const aiReply = await getGeminiResponse(userMessage, audioBase64);
-                        console.log(`[এআই রিপ্লাই]: ${aiReply}\n----------------------------------`);
+                        console.log(`[AI Reply]: ${aiReply}\n----------------------------------`);
                         
                         await sendMessageToFacebook(sender_psid, aiReply);
                     } catch (e) {

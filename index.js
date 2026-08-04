@@ -82,7 +82,8 @@ function httpsPost(url, data, headers = {}) {
 }
 
 async function getGeminiResponse(text) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // মডেল ভার্সন 3.5-এ আপডেট করা হয়েছে
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     const payload = {
         contents: [{ parts: [{ text: text }] }]
     };

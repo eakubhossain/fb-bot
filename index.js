@@ -7,12 +7,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-
-// আপনার দেওয়া ২টি API Key
-const GEMINI_API_KEYS = [
-    "AQ.Ab8RN6LH20HSC8McNFe3PcQPMPuHpzZZ3l4Or-_hPneAktlYNA",
-    "AQ.Ab8RN6Ib5St33jrpnqF1RDKtpNj_dRTYuyD_h9zVHHFIdqNDsA"
-];
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
@@ -136,8 +131,10 @@ function httpsPost(url, data, headers = {}) {
 }
 
 async function getGeminiResponse(text, audioBase64) {
-    const randomKey = GEMINI_API_KEYS[Math.floor(Math.random() * GEMINI_API_KEYS.length)];
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${randomKey}`;
+    if (!GEMINI_API_KEY) {
+        return "System error: API Key missing!";
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     const training_text = `তুমি "Motolock" (মটোলক) পেজের একজন রক্তমাংসের মানুষ কাস্টমার সাপোর্ট এজেন্ট। তোমার কাজ হলো কাস্টমারদের সাথে একদম ন্যাচারাল মানুষের মতো কথা বলা এবং জিপিএস প্রোডাক্ট বিক্রি করতে সাহায্য করা। 
 
@@ -146,7 +143,7 @@ async function getGeminiResponse(text, audioBase64) {
 ২. বারবার "আসসালামু আলাইকুম" বা স্বাগতম জানাবে না।
 ৩. কাস্টমার যা জানতে চাইবে, ঠিক ততটুকুই উত্তর দিবে।
 ৪. মেসেজে সুন্দর করে ইমোজি (😊, 🛵, 🚘, ✅, ৳) ব্যবহার করবে।
-৫. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
+৫. কাস্টমার ভয়ে মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
 ৬. কখনোই বলবে না যে তুমি এআই বা বট।
 ৭. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
 

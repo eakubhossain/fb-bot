@@ -78,10 +78,29 @@ app.post('/webhook', async (req, res) => {
                         if (userMessage) console.log(`[Customer]: ${userMessage}`);
                         if (audioBase64) console.log(`[Customer sent a Voice Message]`);
 
-                        const aiReply = await getGeminiResponse(userMessage, audioBase64);
-                        console.log(`[AI Reply]: ${aiReply}\n----------------------------------`);
+                        let aiReply = await getGeminiResponse(userMessage, audioBase64);
+                        let audioUrl = null;
+
+                        // ম্যাজিক ট্র্যাকার: জেমিনি কোন অডিওটি পাঠাতে চাচ্ছে তা ধরা হচ্ছে
+                        if (aiReply.includes('[AUDIO_WELCOME]')) {
+                            audioUrl = "https://eakub.pro.bd/voice/bike-or-car.mp3";
+                            aiReply = aiReply.replace('[AUDIO_WELCOME]', '').trim();
+                        } else if (aiReply.includes('[AUDIO_BIKE]')) {
+                            audioUrl = "https://eakub.pro.bd/voice/about-bike.mp3";
+                            aiReply = aiReply.replace('[AUDIO_BIKE]', '').trim();
+                        }
+
+                        console.log(`[AI Reply]: ${aiReply || '(Only Audio)'}\n----------------------------------`);
                         
-                        await sendMessageToFacebook(sender_psid, aiReply);
+                        // আগে অডিও পাঠানো হবে
+                        if (audioUrl) {
+                            await sendAudioToFacebook(sender_psid, audioUrl);
+                        }
+                        
+                        // এরপর টেক্সট পাঠানো হবে (যদি এআই টেক্সটে কিছু বলে থাকে)
+                        if (aiReply) {
+                            await sendMessageToFacebook(sender_psid, aiReply);
+                        }
                     } catch (e) {
                         console.error('Error processing message:', e);
                     }
@@ -124,12 +143,19 @@ async function getGeminiResponse(text, audioBase64) {
 
 খুব জরুরি নির্দেশনা (অবশ্যই মানতে হবে):
 ১. কাস্টমার যেন ঘুণাক্ষরেও বুঝতে না পারে যে তুমি কোনো বট বা এআই। একদম সাধারণ মানুষের মতো ছোট, ক্যাজুয়াল ও বন্ধুসুলভ মেসেজ দিবে।
-২. বারবার "আসসালামু আলাইকুম" বা স্বাগতম জানাবে না। শুধু কাস্টমার সালাম দিলে বা প্রথম মেসেজেই শুধু সালাম দিতে পারো।
-৩. কাস্টমার যা জানতে চাইবে, ঠিক ততটুকুই উত্তর দিবে। অযথা বিশাল লম্বা মেসেজ বা সব প্রোডাক্টের লিস্ট একসাথে দিবে না। 
+২. বারবার "আসসালামু আলাইকুম" বা স্বাগতম জানাবে না।
+৩. কাস্টমার যা জানতে চাইবে, ঠিক ততটুকুই উত্তর দিবে।
 ৪. মেসেজে সুন্দর করে ইমোজি (😊, 🛵, 🚘, ✅, ৳) ব্যবহার করবে।
-৫. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট মেসেজেই ছোট করে উত্তর দিবে।
+৫. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
 ৬. কখনোই বলবে না যে তুমি এআই বা বট।
-৭. কেউ যদি জাহাজ (Ship), বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
+৭. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
+
+[অডিও মেসেজ পাঠানোর নিয়ম]
+তোমার কাছে ২টি প্রি-রেকর্ডেড অডিও মেসেজ আছে:
+১. প্রথমবার কোনো কাস্টমার মেসেজ দিলে (যেমন: Hi, Hello, দাম কত, সালাম দিলে), তুমি তাকে একটি ওয়েলকাম অডিও পাঠাবে। ওয়েলকাম অডিও পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_WELCOME]
+২. কাস্টমার যদি স্পেসিফিকভাবে বাইকের জিপিএস সম্পর্কে জানতে চায়, তবে তুমি তাকে বাইকের অডিওটি পাঠাবে। এই অডিওটি পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_BIKE]
+
+নোট: অডিও পাঠানোর কোডটি লেখার পাশাপাশি তুমি চাইলে ছোট করে টেক্সটেও কিছু লিখে দিতে পারো (যেমন: "জি ভাইয়া, এই ভয়েসটি শুনুন")।
 
 [প্রোডাক্ট ও প্রাইজ লিস্ট]
 🏍️ বাইক, সিএনজি, অটোরিকশা:
@@ -183,6 +209,25 @@ async function sendMessageToFacebook(sender_psid, text) {
     const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
     const payload = { recipient: { id: sender_psid }, message: { text: text } };
     await httpsPost(url, payload);
+}
+
+// অডিও পাঠানোর নতুন ফাংশন
+async function sendAudioToFacebook(sender_psid, audioUrl) {
+    const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
+    const payload = { 
+        recipient: { id: sender_psid }, 
+        message: { 
+            attachment: {
+                type: "audio",
+                payload: { url: audioUrl, is_reusable: true }
+            }
+        } 
+    };
+    try {
+        await httpsPost(url, payload);
+    } catch (error) {
+        console.error("Error sending audio to Facebook:", error);
+    }
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

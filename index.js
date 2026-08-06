@@ -86,12 +86,12 @@ app.post('/webhook', async (req, res) => {
                             
                             if (audioUrl) {
                                 await sendAudioToFacebook(sender_psid, audioUrl);
-                                console.log(`[Audio Sent]: ${audioUrl}`);
+                                console.log(`[Audio Sent Request Processed]`);
                             }
                             // মেসেজের ক্ষেত্রে হাইড করার অপশন নেই, তাই এখানে ফিল্টার করছি
                             if (aiReply && !aiReply.includes('[HIDE_COMMENT]')) {
                                 await sendMessageToFacebook(sender_psid, aiReply);
-                                console.log(`[Message Reply Sent]: ${aiReply}`);
+                                console.log(`[Message Reply Sent Request Processed]`);
                             }
                         } catch (e) { console.error(e); }
                     }
@@ -127,7 +127,7 @@ app.post('/webhook', async (req, res) => {
                                     
                                     if (aiReply) {
                                         await replyToComment(comment_id, aiReply);
-                                        console.log(`[Comment Reply Sent]: ${aiReply}`);
+                                        console.log(`[Comment Reply Sent Request Processed]`);
                                     }
                                 }
                             } catch (e) { console.error('Error handling comment:', e); }
@@ -155,7 +155,17 @@ function httpsPost(url, data, headers = {}) {
             let body = '';
             res.on('data', (chunk) => body += chunk);
             res.on('end', () => {
-                try { resolve(JSON.parse(body)); } catch(e) { resolve(body); }
+                let parsedBody = body;
+                try { parsedBody = JSON.parse(body); } catch(e) {}
+                
+                // ফেসবুক কোনো Error দিলে সেটি এখানে প্রিন্ট হবে
+                if (res.statusCode >= 400) {
+                    console.error(`\n❌ [Facebook API Error] Status: ${res.statusCode}`);
+                    console.error(JSON.stringify(parsedBody, null, 2));
+                    console.error(`-----------------------------------------\n`);
+                }
+                
+                resolve(parsedBody);
             });
         });
         req.on('error', reject);
@@ -175,7 +185,7 @@ const training_text = `তুমি "Motolock" (মটোলক) পেজের
 ৬. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
 ৭. কখনোই বলবে না যে তুমি এআই বা বট।
 ৮. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
-৯. (ভেরি ইম্পর্ট্যান্ট!) যদি কোনো কাস্টমার কমেন্টে বা মেসেজে গালিগালাজ করে, অথবা 'ফালতু', 'চিটার', 'বাটপার', 'ভুয়া', 'প্রতারক', 'চোর' বা এ জাতীয় কোনো খারাপ বা নেতিবাচক শব্দ ব্যবহার করে, তবে তুমি কোনো উত্তর দিবে না। এর বদলে তুমি তোমার মেসেজের ভেতরে শুধুমাত্র এই একটি সিক্রেট কোড লিখবে: [HIDE_COMMENT]। আর যদি কমেন্টটি ভালো বা সাধারণ হয়, তবে আগের নিয়ম অনুযায়ী স্বাভাবিক উত্তর দিবে।
+৯. (ভেরি ইম্পর্ট্যান্ট!) যদি কোনো কাস্টমার কমেন্টে বা মেসেজে গালিগালাজ করে, অথবা 'ফালতু', 'চিটার', 'বাটপার', 'ভুয়া', 'প্রতারক', 'চোর' বা এ জাতীয় কোনো খারাপ বা নেতিবাচক শব্দ ব্যবহার করে, তবে তুমি কোনো উত্তর দিবে পরিচয় না। এর বদলে তুমি তোমার মেসেজের ভেতরে শুধুমাত্র এই একটি সিক্রেট কোড লিখবে: [HIDE_COMMENT]। আর যদি কমেন্টটি ভালো বা সাধারণ হয়, তবে আগের নিয়ম অনুযায়ী স্বাভাবিক উত্তর দিবে।
 
 [অডিও মেসেজ পাঠানোর নিয়ম]
 তোমার কাছে ২টি প্রি-রেকর্ডেড অডিও মেসেজ আছে:

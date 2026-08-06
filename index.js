@@ -84,7 +84,6 @@ let isNextCastle = true;
 
 async function autoPostToFacebook() {
     try {
-        // Query গুলো সিম্পল করা হলো যাতে Unsplash সহজে খুঁজে পায়
         const searchQuery = isNextCastle ? "castle,ancient" : "switzerland,landscape";
         const promptCategory = isNextCastle ? "an ancient, majestic castle" : "a breathtaking natural landscape in Switzerland";
         
@@ -99,7 +98,9 @@ async function autoPostToFacebook() {
             return;
         }
 
-        const imageUrl = unsplashData.urls.full;
+        // 🌟 ম্যাজিক সলিউশন: 10MB লিমিট এড়াতে কাস্টম 2.5K রেজ্যুলেশন (High Quality, Low File Size)
+        const imageUrl = unsplashData.urls.raw + "&w=2560&q=80&fm=jpg";
+        
         const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking scenery";
 
         const prompt = `You are an expert social media manager for a Premium Photography Facebook page.
@@ -150,7 +151,7 @@ app.post('/webhook', async (req, res) => {
                     if (userMessage || audioBase64) {
                         try {
                             if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Fetching a 4K masterpiece (Castle/Nature) from Unsplash... Please check your page after 15 seconds!");
+                                await sendMessageToFacebook(sender_psid, "Fetching a 2.5K masterpiece (Castle/Nature) from Unsplash... Please check your page after 15 seconds!");
                                 await autoPostToFacebook();
                             } else {
                                 let aiReply = await getGeminiResponse(userMessage, audioBase64);
@@ -235,9 +236,6 @@ async function replyToComment(comment_id, text) {
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 
-// ==========================================
-// ⏰ অটো-পোস্টিং শিডিউল (প্রতি ৮ ঘণ্টা পরপর)
-// ==========================================
 const EIGHT_HOURS = 8 * 60 * 60 * 1000;
 setInterval(async () => {
     console.log("⏰ 8 Hours passed! Running Auto-Poster...");

@@ -44,7 +44,6 @@ function downloadAudioBase64(urlStr) {
     });
 }
 
-// আনস্প্ল্যাশ থেকে ডেটা আনার জন্য ফাংশন
 function httpsGet(url) {
     return new Promise((resolve, reject) => {
         https.get(url, (res) => {
@@ -83,11 +82,22 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-// Unsplash থেকে রিয়েল ছবি এনে পোস্ট করার ফাংশন
+// কোন ধরনের ছবি পোস্ট হবে, তা ট্র্যাক করার জন্য একটি ভ্যারিয়েবল
+let isNextCastle = true;
+
 async function autoPostToFacebook() {
     try {
-        // ১. Unsplash থেকে অসাধারণ একটি রিয়েল ছবি আনা
-        const unsplashUrl = `https://api.unsplash.com/photos/random?query=switzerland,alps,nature,landscape&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
+        // ক্যাটাগরি ঠিক করা (একবার Castle, একবার Nature)
+        const searchQuery = isNextCastle ? "castle,scotland,germany,ancient,architecture" : "switzerland,alps,nature,landscape";
+        const promptCategory = isNextCastle ? "an ancient, majestic castle in Scotland or Germany" : "a breathtaking natural landscape in Switzerland";
+        
+        console.log(`\n🔍 Fetching a [${isNextCastle ? 'CASTLE' : 'NATURE'}] image from Unsplash...`);
+        
+        // পরের বারের জন্য ক্যাটাগরি পাল্টে দেওয়া
+        isNextCastle = !isNextCastle;
+
+        // ১. Unsplash থেকে ছবি আনা
+        const unsplashUrl = `https://api.unsplash.com/photos/random?query=${searchQuery}&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
         const unsplashData = await httpsGet(unsplashUrl);
         
         if (!unsplashData || !unsplashData.urls) {
@@ -95,17 +105,14 @@ async function autoPostToFacebook() {
             return;
         }
 
-        // ছবিটিকে আল্ট্রা-এইচডি (4K) কোয়ালিটিতে নেওয়ার জন্য regular এর বদলে full ব্যবহার করা হলো
         const imageUrl = unsplashData.urls.full;
-        
-        // ছবির ভেতরে কী আছে সেটি পড়ে নেওয়া
-        const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking natural landscape in Switzerland";
+        const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking scenery";
 
-        // ২. Gemini-কে ছবির বর্ণনা দিয়ে সুন্দর একটি ক্যাপশন লেখানো
-        const prompt = `You are an expert social media manager for a Premium Nature Photography Facebook page.
-I have a beautiful photograph with the following description: "${imageDescription}"
+        // ২. Gemini-কে দিয়ে ক্যাপশন লেখানো
+        const prompt = `You are an expert social media manager for a Premium Photography Facebook page.
+I have a beautiful photograph of ${promptCategory} with the following description: "${imageDescription}"
 Write a highly engaging, breathtaking Facebook post caption for this exact photo (targeting a USA audience).
-Include emojis and popular hashtags (like #Nature #Switzerland #Wanderlust).
+Include emojis and popular hashtags.
 Only return the caption text, nothing else.`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
@@ -142,9 +149,7 @@ app.post('/webhook', async (req, res) => {
                     if (webhook_event.message.attachments) {
                         for (const attachment of webhook_event.message.attachments) {
                             if (attachment.type === 'audio') {
-                                try {
-                                    audioBase64 = await downloadAudioBase64(attachment.payload.url);
-                                } catch(e) {}
+                                try { audioBase64 = await downloadAudioBase64(attachment.payload.url); } catch(e) {}
                                 break;
                             }
                         }
@@ -153,7 +158,7 @@ app.post('/webhook', async (req, res) => {
                     if (userMessage || audioBase64) {
                         try {
                             if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Fetching a 4K masterpiece from Unsplash and generating caption... Please check your page after 15 seconds!");
+                                await sendMessageToFacebook(sender_psid, "Fetching a 4K masterpiece (Castle/Nature) from Unsplash... Please check your page after 15 seconds!");
                                 await autoPostToFacebook();
                             } else {
                                 let aiReply = await getGeminiResponse(userMessage, audioBase64);
@@ -187,12 +192,12 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-const training_text = `You are an expert social media manager and friendly assistant for a Premium Nature Photography Facebook page. 
+const training_text = `You are an expert social media manager and friendly assistant for a Premium Photography Facebook page. 
 IMPORTANT RULES:
 1. You MUST reply ONLY in English. Do not use Bengali or any other language.
 2. Keep your replies short, natural, and engaging (1-2 sentences maximum).
 3. If someone praises the photo, give a short friendly thank you with an emoji.
-4. If someone asks "Where is this?" or "Location?", give a relevant, imaginative, and beautiful location name (e.g., "This is inspired by the breathtaking Swiss Alps!").
+4. If someone asks "Where is this?" or "Location?", give a relevant, imaginative, and beautiful location name (e.g., "This is inspired by the breathtaking landscapes of Europe!").
 5. Be polite, warm, and professional.`;
 
 async function getGeminiResponse(text, audioBase64) {
@@ -237,3 +242,12 @@ async function replyToComment(comment_id, text) {
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+
+// ==========================================
+// ⏰ অটো-পোস্টিং শিডিউল (প্রতি ৮ ঘণ্টা পরপর)
+// ==========================================
+const EIGHT_HOURS = 8 * 60 * 60 * 1000;
+setInterval(async () => {
+    console.log("⏰ 8 Hours passed! Running Auto-Poster...");
+    await autoPostToFacebook();
+}, EIGHT_HOURS);

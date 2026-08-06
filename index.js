@@ -73,11 +73,16 @@ app.post('/webhook', async (req, res) => {
                             if (userMessage) console.log(`[New Message]: ${userMessage}`);
                             else console.log(`[New Audio Message Received]`);
                             
-                            let aiReply = await getGeminiResponse(userMessage, audioBase64);
-                            
-                            if (aiReply) {
-                                await sendMessageToFacebook(sender_psid, aiReply);
-                                console.log(`[Message Reply Sent Request Processed]`);
+                            // নতুন ম্যাজিক কমান্ড: Auto Posting Test
+                            if (userMessage && userMessage.toLowerCase() === 'post now') {
+                                await sendMessageToFacebook(sender_psid, "Nature image generation started! Please check your Facebook page after 10 seconds.");
+                                await autoPostToFacebook();
+                            } else {
+                                let aiReply = await getGeminiResponse(userMessage, audioBase64);
+                                if (aiReply) {
+                                    await sendMessageToFacebook(sender_psid, aiReply);
+                                    console.log(`[Message Reply Sent Request Processed]`);
+                                }
                             }
                         } catch (e) { console.error(e); }
                     }
@@ -93,7 +98,6 @@ app.post('/webhook', async (req, res) => {
                         const sender_id = change.value.from.id;
                         const page_id = entry.id;
 
-                        // পেজ যদি নিজেই কমেন্ট করে, তবে সেটার রিপ্লাই দেওয়া যাবে না
                         if (sender_id !== page_id) {
                             try {
                                 console.log(`[New Comment]: ${message}`);
@@ -146,7 +150,52 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-// ব্রেইন রিসেট! এখন সে শুধু একটি সাধারণ এআই। 
+// অটোমেটিক ছবি জেনারেট করে পোস্ট করার ফাংশন
+async function autoPostToFacebook() {
+    const prompt = `You are an expert social media manager for a Nature Photography Facebook page targeting a USA audience.
+Write a Facebook post caption about a beautiful natural landscape in the USA (e.g., Yosemite, Yellowstone, Grand Canyon, or just general beautiful forests/mountains).
+Include engaging text, emojis, and popular hashtags (like #NaturePhotography #USA #Landscape #Wanderlust).
+
+IMPORTANT: You must format your response exactly like this:
+[CAPTION]
+(write the facebook post caption here)
+[PROMPT]
+(write a highly detailed, comma-separated image generation prompt in English here, describing the scenery. For example: A breathtaking sunset over Yosemite valley, photorealistic, 8k resolution, cinematic lighting)`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }]
+    };
+    
+    try {
+        const data = await httpsPost(geminiUrl, payload);
+        let resultText = data.candidates[0].content.parts[0].text;
+        
+        let caption = "A beautiful day in nature! 🌿 #Nature #USA";
+        let imagePrompt = "A breathtaking beautiful natural landscape, photorealistic, 8k";
+        
+        if (resultText.includes('[CAPTION]') && resultText.includes('[PROMPT]')) {
+            caption = resultText.split('[PROMPT]')[0].replace('[CAPTION]', '').trim();
+            imagePrompt = resultText.split('[PROMPT]')[1].trim();
+        }
+        
+        // ফ্রি ইমেজ এআই (Pollinations AI) ব্যবহার করে ছবি তৈরি
+        const encodedPrompt = encodeURIComponent(imagePrompt);
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true`;
+        
+        const fbUrl = `https://graph.facebook.com/v20.0/me/photos?access_token=${PAGE_ACCESS_TOKEN}`;
+        const fbPayload = {
+            url: imageUrl,
+            message: caption
+        };
+        
+        const fbResponse = await httpsPost(fbUrl, fbPayload);
+        console.log("✅ Auto-Post Success:", fbResponse);
+    } catch (e) {
+        console.error("❌ Error in autoPostToFacebook:", e);
+    }
+}
+
 const training_text = `তুমি একটি সাধারণ, স্মার্ট এবং হেল্পফুল এআই অ্যাসিস্ট্যান্ট। তোমার কাজ হলো মানুষের যেকোনো প্রশ্নের সুন্দর করে উত্তর দেওয়া। তুমি একদম স্বাভাবিক মানুষের মতো করে কথা বলবে। কোনো নির্দিষ্ট ব্র্যান্ড বা কোম্পানির হয়ে কথা বলবে না।`;
 
 async function getGeminiResponse(text, audioBase64) {

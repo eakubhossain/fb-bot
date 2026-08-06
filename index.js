@@ -48,56 +48,74 @@ app.post('/webhook', async (req, res) => {
         res.status(200).send('EVENT_RECEIVED');
 
         for (const entry of body.entry) {
-            const webhook_event = entry.messaging[0];
-            const sender_psid = webhook_event.sender.id;
+            // ১. মেসেঞ্জারের মেসেজ চেক করা
+            if (entry.messaging) {
+                const webhook_event = entry.messaging[0];
+                const sender_psid = webhook_event.sender.id;
 
-            if (webhook_event.message) {
-                let userMessage = webhook_event.message.text;
-                let audioBase64 = null;
+                if (webhook_event.message) {
+                    let userMessage = webhook_event.message.text;
+                    let audioBase64 = null;
 
-                if (webhook_event.message.attachments) {
-                    for (const attachment of webhook_event.message.attachments) {
-                        if (attachment.type === 'audio') {
-                            try {
-                                audioBase64 = await downloadAudioBase64(attachment.payload.url);
-                            } catch(e) {
-                                console.error('Audio download failed:', e);
+                    if (webhook_event.message.attachments) {
+                        for (const attachment of webhook_event.message.attachments) {
+                            if (attachment.type === 'audio') {
+                                try {
+                                    audioBase64 = await downloadAudioBase64(attachment.payload.url);
+                                } catch(e) { console.error(e); }
+                                break;
                             }
-                            break;
                         }
                     }
+
+                    if (userMessage || audioBase64) {
+                        try {
+                            let aiReply = await getGeminiResponse(userMessage, audioBase64);
+                            let audioUrl = null;
+
+                            if (aiReply.includes('[AUDIO_WELCOME]')) {
+                                audioUrl = "https://eakub.pro.bd/voice/bike-or-car.mp3";
+                                aiReply = aiReply.replace('[AUDIO_WELCOME]', '').trim();
+                            } else if (aiReply.includes('[AUDIO_BIKE]')) {
+                                audioUrl = "https://eakub.pro.bd/voice/about-bike.mp3";
+                                aiReply = aiReply.replace('[AUDIO_BIKE]', '').trim();
+                            }
+                            
+                            if (audioUrl) {
+                                await sendAudioToFacebook(sender_psid, audioUrl);
+                            }
+                            if (aiReply) {
+                                await sendMessageToFacebook(sender_psid, aiReply);
+                            }
+                        } catch (e) { console.error(e); }
+                    }
                 }
+            }
 
-                if (userMessage || audioBase64) {
-                    try {
-                        if (userMessage) console.log(`[Customer]: ${userMessage}`);
-                        if (audioBase64) console.log(`[Customer sent a Voice Message]`);
+            // ২. ফেসবুক পোস্টের কমেন্ট চেক করা
+            if (entry.changes) {
+                for (const change of entry.changes) {
+                    if (change.field === 'feed' && change.value.item === 'comment' && change.value.verb === 'add') {
+                        const comment_id = change.value.comment_id;
+                        const message = change.value.message;
+                        const sender_id = change.value.from.id;
+                        const page_id = entry.id;
 
-                        let aiReply = await getGeminiResponse(userMessage, audioBase64);
-                        let audioUrl = null;
-
-                        // ম্যাজিক ট্র্যাকার: জেমিনি কোন অডিওটি পাঠাতে চাচ্ছে তা ধরা হচ্ছে
-                        if (aiReply.includes('[AUDIO_WELCOME]')) {
-                            audioUrl = "https://eakub.pro.bd/voice/bike-or-car.mp3";
-                            aiReply = aiReply.replace('[AUDIO_WELCOME]', '').trim();
-                        } else if (aiReply.includes('[AUDIO_BIKE]')) {
-                            audioUrl = "https://eakub.pro.bd/voice/about-bike.mp3";
-                            aiReply = aiReply.replace('[AUDIO_BIKE]', '').trim();
+                        // পেজ যদি নিজেই কমেন্ট করে, তবে সেটার রিপ্লাই দেওয়া যাবে না
+                        if (sender_id !== page_id) {
+                            try {
+                                console.log(`[New Comment]: ${message}`);
+                                let aiReply = await getGeminiResponse(message, null);
+                                
+                                // কমেন্টে অডিও দেওয়া যায় না, তাই ট্যাগগুলো রিমুভ করে শুধু টেক্সট রাখা হচ্ছে
+                                aiReply = aiReply.replace('[AUDIO_WELCOME]', '').replace('[AUDIO_BIKE]', '').trim();
+                                
+                                if (aiReply) {
+                                    await replyToComment(comment_id, aiReply);
+                                    console.log(`[Comment Reply Sent]: ${aiReply}`);
+                                }
+                            } catch (e) { console.error('Error replying to comment:', e); }
                         }
-
-                        console.log(`[AI Reply]: ${aiReply || '(Only Audio)'}\n----------------------------------`);
-                        
-                        // আগে অডিও পাঠানো হবে
-                        if (audioUrl) {
-                            await sendAudioToFacebook(sender_psid, audioUrl);
-                        }
-                        
-                        // এরপর টেক্সট পাঠানো হবে (যদি এআই টেক্সটে কিছু বলে থাকে)
-                        if (aiReply) {
-                            await sendMessageToFacebook(sender_psid, aiReply);
-                        }
-                    } catch (e) {
-                        console.error('Error processing message:', e);
                     }
                 }
             }
@@ -130,29 +148,24 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-async function getGeminiResponse(text, audioBase64) {
-    if (!GEMINI_API_KEY) {
-        return "System error: API Key missing!";
-    }
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-    
-    const training_text = `তুমি "Motolock" (মটোলক) পেজের একজন রক্তমাংসের মানুষ কাস্টমার সাপোর্ট এজেন্ট। তোমার কাজ হলো কাস্টমারদের সাথে একদম ন্যাচারাল মানুষের মতো কথা বলা এবং জিপিএস প্রোডাক্ট বিক্রি করতে সাহায্য করা। 
+const training_text = `তুমি "Motolock" (মটোলক) পেজের একজন রক্তমাংসের মানুষ কাস্টমার সাপোর্ট এজেন্ট। তোমার কাজ হলো কাস্টমারদের সাথে একদম ন্যাচারাল মানুষের মতো কথা বলা এবং জিপিএস প্রোডাক্ট বিক্রি করতে সাহায্য করা। 
 
 খুব জরুরি নির্দেশনা (অবশ্যই মানতে হবে):
-১. কাস্টমার যেন ঘুণাক্ষরেও বুঝতে না পারে যে তুমি কোনো বট বা এআই। একদম সাধারণ মানুষের মতো ছোট, ক্যাজুয়াল ও বন্ধুসুলভ মেসেজ দিবে।
-২. বারবার "আসসালামু আলাইকুম" বা স্বাগতম জানাবে না।
-৩. কাস্টমার যা জানতে চাইবে, ঠিক ততটুকুই উত্তর দিবে।
-৪. মেসেজে সুন্দর করে ইমোজি (😊, 🛵, 🚘, ✅, ৳) ব্যবহার করবে।
-৫. কাস্টমার ভয়ে মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
-৬. কখনোই বলবে না যে তুমি এআই বা বট।
-৭. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
+১. কাস্টমার যেন ঘুণাক্ষরেও বুঝতে না পারে যে তুমি কোনো বট বা এআই। একদম সাধারণ মানুষের মতো ছোট ও প্রফেশনাল মেসেজ দিবে।
+২. কাস্টমারকে সব সময় "স্যার" (Sir) বলে সম্মানের সাথে সম্বোধন করবে। কখনোই "ভাইয়া" বা অন্য কিছু বলবে না।
+৩. বারবার "আসসালামু আলাইকুম" বা স্বাগতম জানাবে না।
+৪. কাস্টমার যা জানতে চাইবে, ঠিক ততটুকুই উত্তর দিবে।
+৫. মেসেজে সুন্দর করে ইমোজি (😊, 🛵, 🚘, ✅, ৳) ব্যবহার করবে।
+৬. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
+৭. কখনোই বলবে না যে তুমি এআই বা বট।
+৮. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
 
 [অডিও মেসেজ পাঠানোর নিয়ম]
 তোমার কাছে ২টি প্রি-রেকর্ডেড অডিও মেসেজ আছে:
 ১. প্রথমবার কোনো কাস্টমার মেসেজ দিলে (যেমন: Hi, Hello, দাম কত, সালাম দিলে), তুমি তাকে একটি ওয়েলকাম অডিও পাঠাবে। ওয়েলকাম অডিও পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_WELCOME]
-২. কাস্টমার যদি স্পেসিফিকভাবে বাইকের জিপিএস সম্পর্কে জানতে চায়, তবে তুমি তাকে বাইকের অডিওটি পাঠাবে। এই অডিওটি পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_BIKE]
-
-নোট: অডিও পাঠানোর কোডটি লেখার পাশাপাশি তুমি চাইলে ছোট করে টেক্সটেও কিছু লিখে দিতে পারো (যেমন: "জি ভাইয়া, এই ভয়েসটি শুনুন")।
+২. কাস্টমার যদি স্পেসিফিকভাবে "বাইক" বা "মোটরসাইকেল" এর জিপিএস সম্পর্কে জানতে চায়, শুধুমাত্র তখনই তুমি তাকে বাইকের অডিওটি পাঠাবে। অডিওটি পাঠাতে তোমার মেসেজের ভেতরে লিখবে: [AUDIO_BIKE]। 
+খবরদার! কাস্টমার যদি প্রাইভেট কার, বাস, ট্রাক বা অন্য কোনো গাড়ির কথা বলে, তবে কখনোই [AUDIO_BIKE] পাঠাবে না! তখন শুধু টেক্সট মেসেজে কারের জিপিএসের দাম বলবে।
+নোট: অডিও পাঠানোর কোডটি লেখার পাশাপাশি তুমি চাইলে ছোট করে টেক্সটেও কিছু লিখে দিতে পারো (যেমন: "জি স্যার, এই ভয়েসটি শুনুন")।
 
 [প্রোডাক্ট ও প্রাইজ লিস্ট]
 🏍️ বাইক, সিএনজি, অটোরিকশা:
@@ -178,6 +191,11 @@ async function getGeminiResponse(text, audioBase64) {
 ৪/ আমরা একটিভ করলে অ্যাপ নামিয়ে লগইন করতে হবে (আইডি: জিমেইল, পাসওয়ার্ড: Mt123456@)।
 ৫/ সার্ভার প্রবলেম হলে SMS দিয়ে লক/আনলক করা যায়: আনলক (RELAY,0#), লক (RELAY,1#)`;
 
+async function getGeminiResponse(text, audioBase64) {
+    if (!GEMINI_API_KEY) return "System error: API Key missing!";
+    
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+    
     let partsArray = [];
     if (text) partsArray.push({ text: text });
     else if (audioBase64) partsArray.push({ text: "কাস্টমার একটি ভয়েস মেসেজ পাঠিয়েছে। ভয়েস মেসেজটি শুনে উত্তর দাও।" });
@@ -208,7 +226,6 @@ async function sendMessageToFacebook(sender_psid, text) {
     await httpsPost(url, payload);
 }
 
-// অডিও পাঠানোর নতুন ফাংশন
 async function sendAudioToFacebook(sender_psid, audioUrl) {
     const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
     const payload = { 
@@ -220,11 +237,14 @@ async function sendAudioToFacebook(sender_psid, audioUrl) {
             }
         } 
     };
-    try {
-        await httpsPost(url, payload);
-    } catch (error) {
-        console.error("Error sending audio to Facebook:", error);
-    }
+    try { await httpsPost(url, payload); } catch (e) { console.error(e); }
+}
+
+// কমেন্টে রিপ্লাই দেওয়ার ফাংশন
+async function replyToComment(comment_id, text) {
+    const url = `https://graph.facebook.com/v20.0/${comment_id}/comments?access_token=${PAGE_ACCESS_TOKEN}`;
+    const payload = { message: text };
+    try { await httpsPost(url, payload); } catch (e) { console.error(e); }
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

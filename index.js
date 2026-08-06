@@ -73,8 +73,9 @@ app.post('/webhook', async (req, res) => {
                             if (userMessage) console.log(`[New Message]: ${userMessage}`);
                             else console.log(`[New Audio Message Received]`);
                             
+                            // নতুন ম্যাজিক কমান্ড: Auto Posting Test
                             if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Eye-catching nature image generation started! Please check your Facebook page after 10-15 seconds.");
+                                await sendMessageToFacebook(sender_psid, "Swiss View style image generation started! Please check your Facebook page after 10-15 seconds.");
                                 await autoPostToFacebook();
                             } else {
                                 let aiReply = await getGeminiResponse(userMessage, audioBase64);
@@ -149,17 +150,17 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-// অটোমেটিক ছবি জেনারেট করে পোস্ট করার ফাংশন
+// অটোমেটিক ছবি জেনারেট করে পোস্ট করার ফাংশন (Swiss View & Pixabay Style)
 async function autoPostToFacebook() {
-    const prompt = `You are an expert social media manager for a Premium Nature Photography Facebook page.
-Write a Facebook post caption about an extremely beautiful, breathtaking natural landscape (e.g., Switzerland, Germany, Alps, magical forests, or crystal clear blue lakes).
-Include highly engaging text, emojis, and popular hashtags.
+    const prompt = `You are an expert social media manager for a Premium Nature Photography Facebook page inspired by the famous "Swiss View" page.
+Write a Facebook post caption about an extremely beautiful, breathtaking natural landscape in Switzerland or Europe (e.g., Lauterbrunnen valley, Zermatt, Matterhorn, crystal clear alpine lakes, or cozy mountain chalets).
+Include highly engaging text, emojis, and popular hashtags (like #SwissView #Switzerland #Nature #Wanderlust).
 
 IMPORTANT: You must format your response exactly like this:
 [CAPTION]
 (write the facebook post caption here)
 [PROMPT]
-(write a highly detailed image generation prompt in English here. The image must be EXTREMELY EYE-CATCHING, VIBRANT, and MAGICAL. Use keywords like: "ultra-vibrant colors, magical sunlight, photorealistic, 8k resolution, award-winning National Geographic photography, masterpiece, eye-catching, stunning scenery, Switzerland nature, lush green valleys, crystal clear water, epic cinematic lighting, highly detailed". Ensure the prompt creates an image that immediately grabs attention.)`;
+(write a highly detailed image generation prompt in English here. The image must perfectly replicate the aesthetic of the "Swiss View" Facebook page and premium Pixabay stock photos. Use keywords like: "breathtaking Switzerland landscape, majestic Swiss Alps, lush green valley, crystal clear turquoise lake, cozy wooden chalet, ultra-vibrant colors, magical golden hour sunlight, HDR, photorealistic, 8k resolution, masterpiece, eye-catching, stunning scenery, epic cinematic lighting, highly detailed, awe-inspiring, heart-touching". Ensure the prompt creates an image that immediately grabs attention and feels incredibly magical.)`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     const payload = {
@@ -170,8 +171,8 @@ IMPORTANT: You must format your response exactly like this:
         const data = await httpsPost(geminiUrl, payload);
         let resultText = data.candidates[0].content.parts[0].text;
         
-        let caption = "A beautiful day in nature! 🌿 #Nature #USA";
-        let imagePrompt = "A breathtaking beautiful natural landscape, photorealistic, 8k";
+        let caption = "A beautiful day in nature! 🌿 #Nature #Switzerland";
+        let imagePrompt = "A breathtaking beautiful natural landscape in Switzerland, photorealistic, 8k";
         
         if (resultText.includes('[CAPTION]') && resultText.includes('[PROMPT]')) {
             caption = resultText.split('[PROMPT]')[0].replace('[CAPTION]', '').trim();
@@ -194,7 +195,7 @@ IMPORTANT: You must format your response exactly like this:
     }
 }
 
-// নতুন ট্রেনিং টেক্সট: শুধুমাত্র ইংরেজিতে উত্তর দেওয়ার জন্য
+// ট্রেনিং টেক্সট: শুধুমাত্র ইংরেজিতে উত্তর দেওয়ার জন্য
 const training_text = `You are an expert social media manager and friendly assistant for a Premium Nature Photography Facebook page. 
 IMPORTANT RULES:
 1. You MUST reply ONLY in English. Do not use Bengali or any other language, even if the user speaks Bengali.

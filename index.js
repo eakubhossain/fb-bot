@@ -73,9 +73,8 @@ app.post('/webhook', async (req, res) => {
                             if (userMessage) console.log(`[New Message]: ${userMessage}`);
                             else console.log(`[New Audio Message Received]`);
                             
-                            // নতুন ম্যাজিক কমান্ড: Auto Posting Test
                             if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Nature image generation started! Please check your Facebook page after 10 seconds.");
+                                await sendMessageToFacebook(sender_psid, "Eye-catching nature image generation started! Please check your Facebook page after 10-15 seconds.");
                                 await autoPostToFacebook();
                             } else {
                                 let aiReply = await getGeminiResponse(userMessage, audioBase64);
@@ -152,15 +151,15 @@ function httpsPost(url, data, headers = {}) {
 
 // অটোমেটিক ছবি জেনারেট করে পোস্ট করার ফাংশন
 async function autoPostToFacebook() {
-    const prompt = `You are an expert social media manager for a Nature Photography Facebook page targeting a USA audience.
-Write a Facebook post caption about a beautiful natural landscape in the USA (e.g., Yosemite, Yellowstone, Grand Canyon, or just general beautiful forests/mountains).
-Include engaging text, emojis, and popular hashtags (like #NaturePhotography #USA #Landscape #Wanderlust).
+    const prompt = `You are an expert social media manager for a Premium Nature Photography Facebook page.
+Write a Facebook post caption about an extremely beautiful, breathtaking natural landscape (e.g., Switzerland, Germany, Alps, magical forests, or crystal clear blue lakes).
+Include highly engaging text, emojis, and popular hashtags.
 
 IMPORTANT: You must format your response exactly like this:
 [CAPTION]
 (write the facebook post caption here)
 [PROMPT]
-(write a highly detailed, comma-separated image generation prompt in English here, describing the scenery. For example: A breathtaking sunset over Yosemite valley, photorealistic, 8k resolution, cinematic lighting)`;
+(write a highly detailed image generation prompt in English here. The image must be EXTREMELY EYE-CATCHING, VIBRANT, and MAGICAL. Use keywords like: "ultra-vibrant colors, magical sunlight, photorealistic, 8k resolution, award-winning National Geographic photography, masterpiece, eye-catching, stunning scenery, Switzerland nature, lush green valleys, crystal clear water, epic cinematic lighting, highly detailed". Ensure the prompt creates an image that immediately grabs attention.)`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     const payload = {
@@ -179,7 +178,6 @@ IMPORTANT: You must format your response exactly like this:
             imagePrompt = resultText.split('[PROMPT]')[1].trim();
         }
         
-        // ফ্রি ইমেজ এআই (Pollinations AI) ব্যবহার করে ছবি তৈরি
         const encodedPrompt = encodeURIComponent(imagePrompt);
         const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true`;
         
@@ -196,7 +194,14 @@ IMPORTANT: You must format your response exactly like this:
     }
 }
 
-const training_text = `তুমি একটি সাধারণ, স্মার্ট এবং হেল্পফুল এআই অ্যাসিস্ট্যান্ট। তোমার কাজ হলো মানুষের যেকোনো প্রশ্নের সুন্দর করে উত্তর দেওয়া। তুমি একদম স্বাভাবিক মানুষের মতো করে কথা বলবে। কোনো নির্দিষ্ট ব্র্যান্ড বা কোম্পানির হয়ে কথা বলবে না।`;
+// নতুন ট্রেনিং টেক্সট: শুধুমাত্র ইংরেজিতে উত্তর দেওয়ার জন্য
+const training_text = `You are an expert social media manager and friendly assistant for a Premium Nature Photography Facebook page. 
+IMPORTANT RULES:
+1. You MUST reply ONLY in English. Do not use Bengali or any other language, even if the user speaks Bengali.
+2. Keep your replies short, natural, and engaging (1-2 sentences maximum).
+3. If someone says "Wow", "Nice", or praises the photo, give a short friendly thank you with an emoji (e.g. "Thank you so much! 💚").
+4. If someone asks "Where is this?" or "Location?", give a relevant, imaginative, and beautiful location name (e.g., "This is inspired by the breathtaking Swiss Alps!" or "This beautiful spot reminds us of Glacier National Park!").
+5. Be polite, warm, and professional.`;
 
 async function getGeminiResponse(text, audioBase64) {
     if (!GEMINI_API_KEY) return "System error: API Key missing!";
@@ -205,7 +210,7 @@ async function getGeminiResponse(text, audioBase64) {
     
     let partsArray = [];
     if (text) partsArray.push({ text: text });
-    else if (audioBase64) partsArray.push({ text: "কাস্টমার একটি ভয়েস মেসেজ পাঠিয়েছে। ভয়েস মেসেজটি শুনে উত্তর দাও।" });
+    else if (audioBase64) partsArray.push({ text: "The user sent an audio message. Please listen to it and reply according to your instructions." });
 
     if (audioBase64) {
         partsArray.push({ inlineData: { mimeType: "audio/mp4", data: audioBase64 } });
@@ -221,9 +226,9 @@ async function getGeminiResponse(text, audioBase64) {
         if (data.candidates && data.candidates.length > 0) {
             return data.candidates[0].content.parts[0].text;
         }
-        return "দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।";
+        return "I am unable to answer right now, please try again later.";
     } catch (error) {
-        return "দুঃখিত, আমার সার্ভারে সমস্যা হচ্ছে।";
+        return "Sorry, we are facing some technical issues.";
     }
 }
 

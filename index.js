@@ -70,7 +70,6 @@ app.post('/webhook', async (req, res) => {
 
                     if (userMessage || audioBase64) {
                         try {
-                            // এই লাইনগুলো নতুন করে যোগ করা হয়েছে (লগ দেখার জন্য)
                             if (userMessage) console.log(`[New Message]: ${userMessage}`);
                             else console.log(`[New Audio Message Received]`);
                             
@@ -89,7 +88,8 @@ app.post('/webhook', async (req, res) => {
                                 await sendAudioToFacebook(sender_psid, audioUrl);
                                 console.log(`[Audio Sent]: ${audioUrl}`);
                             }
-                            if (aiReply) {
+                            // মেসেজের ক্ষেত্রে হাইড করার অপশন নেই, তাই এখানে ফিল্টার করছি
+                            if (aiReply && !aiReply.includes('[HIDE_COMMENT]')) {
                                 await sendMessageToFacebook(sender_psid, aiReply);
                                 console.log(`[Message Reply Sent]: ${aiReply}`);
                             }
@@ -113,14 +113,20 @@ app.post('/webhook', async (req, res) => {
                                 console.log(`[New Comment]: ${message}`);
                                 let aiReply = await getGeminiResponse(message, null);
                                 
-                                // কমেন্টে অডিও দেওয়া যায় না, তাই ট্যাগগুলো রিমুভ করে শুধু টেক্সট রাখা হচ্ছে
-                                aiReply = aiReply.replace('[AUDIO_WELCOME]', '').replace('[AUDIO_BIKE]', '').trim();
-                                
-                                if (aiReply) {
-                                    await replyToComment(comment_id, aiReply);
-                                    console.log(`[Comment Reply Sent]: ${aiReply}`);
+                                // যদি এআই খারাপ কমেন্ট হিসেবে শনাক্ত করে
+                                if (aiReply.includes('[HIDE_COMMENT]')) {
+                                    await hideComment(comment_id);
+                                    console.log(`[Comment Hidden Successfully]: ${message}`);
+                                } else {
+                                    // কমেন্টে অডিও দেওয়া যায় না, তাই ট্যাগগুলো রিমুভ করে শুধু টেক্সট রাখা হচ্ছে
+                                    aiReply = aiReply.replace('[AUDIO_WELCOME]', '').replace('[AUDIO_BIKE]', '').trim();
+                                    
+                                    if (aiReply) {
+                                        await replyToComment(comment_id, aiReply);
+                                        console.log(`[Comment Reply Sent]: ${aiReply}`);
+                                    }
                                 }
-                            } catch (e) { console.error('Error replying to comment:', e); }
+                            } catch (e) { console.error('Error handling comment:', e); }
                         }
                     }
                 }
@@ -165,12 +171,13 @@ const training_text = `তুমি "Motolock" (মটোলক) পেজের
 ৬. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
 ৭. কখনোই বলবে না যে তুমি এআই বা বট।
 ৮. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
+৯. (ভেরি ইম্পর্ট্যান্ট!) যদি কোনো কাস্টমার কমেন্টে বা মেসেজে গালিগালাজ করে, অথবা 'ফালতু', 'চিটার', 'বাটপার', 'ভুয়া', 'প্রতারক', 'চোর' বা এ জাতীয় কোনো খারাপ বা নেতিবাচক শব্দ ব্যবহার করে, তবে তুমি কোনো উত্তর দিবে না। এর বদলে তুমি তোমার মেসেজের ভেতরে শুধুমাত্র এই একটি সিক্রেট কোড লিখবে: [HIDE_COMMENT]। আর যদি কমেন্টটি ভালো বা সাধারণ হয়, তবে আগের নিয়ম অনুযায়ী স্বাভাবিক উত্তর দিবে।
 
 [অডিও মেসেজ পাঠানোর নিয়ম]
 তোমার কাছে ২টি প্রি-রেকর্ডেড অডিও মেসেজ আছে:
 ১. প্রথমবার কোনো কাস্টমার মেসেজ দিলে (যেমন: Hi, Hello, দাম কত, সালাম দিলে), তুমি তাকে একটি ওয়েলকাম অডিও পাঠাবে। ওয়েলকাম অডিও পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_WELCOME]
 ২. কাস্টমার যদি স্পেসিফিকভাবে "বাইক" বা "মোটরসাইকেল" এর জিপিএস সম্পর্কে জানতে চায়, শুধুমাত্র তখনই তুমি তাকে বাইকের অডিওটি পাঠাবে। অডিওটি পাঠাতে তোমার মেসেজের ভেতরে লিখবে: [AUDIO_BIKE]। 
-খবরদার! কাস্টমার যদি প্রাইভেট কার, বাস, ট্রাক বা অন্য কোনো গাড়ির কথা বলে, তবে কখনোই [AUDIO_BIKE] পাঠাবে বোমা! তখন শুধু টেক্সট মেসেজে কারের জিপিএসের দাম বলবে।
+খবরদার! কাস্টমার যদি প্রাইভেট কার, বাস, ট্রাক বা অন্য কোনো গাড়ির কথা বলে, তবে কখনোই [AUDIO_BIKE] পাঠাবে না! তখন শুধু টেক্সট মেসেজে কারের জিপিএসের দাম বলবে।
 নোট: অডিও পাঠানোর কোডটি লেখার পাশাপাশি তুমি চাইলে ছোট করে টেক্সটেও কিছু লিখে দিতে পারো (যেমন: "জি স্যার, এই ভয়েসটি শুনুন")।
 
 [প্রোডাক্ট ও প্রাইজ লিস্ট]
@@ -246,11 +253,17 @@ async function sendAudioToFacebook(sender_psid, audioUrl) {
     try { await httpsPost(url, payload); } catch (e) { console.error(e); }
 }
 
-// কমেন্টে রিপ্লাই দেওয়ার ফাংশন
 async function replyToComment(comment_id, text) {
     const url = `https://graph.facebook.com/v20.0/${comment_id}/comments?access_token=${PAGE_ACCESS_TOKEN}`;
     const payload = { message: text };
     try { await httpsPost(url, payload); } catch (e) { console.error(e); }
+}
+
+// নতুন ফাংশন: খারাপ কমেন্ট হাইড করার জন্য
+async function hideComment(comment_id) {
+    const url = `https://graph.facebook.com/v20.0/${comment_id}?access_token=${PAGE_ACCESS_TOKEN}`;
+    const payload = { is_hidden: true };
+    try { await httpsPost(url, payload); } catch (e) { console.error('Error hiding comment:', e); }
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

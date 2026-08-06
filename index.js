@@ -95,7 +95,9 @@ async function autoPostToFacebook() {
             return;
         }
 
-        const imageUrl = unsplashData.urls.regular;
+        // ছবিটিকে আল্ট্রা-এইচডি (4K) কোয়ালিটিতে নেওয়ার জন্য regular এর বদলে full ব্যবহার করা হলো
+        const imageUrl = unsplashData.urls.full;
+        
         // ছবির ভেতরে কী আছে সেটি পড়ে নেওয়া
         const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking natural landscape in Switzerland";
 
@@ -151,7 +153,7 @@ app.post('/webhook', async (req, res) => {
                     if (userMessage || audioBase64) {
                         try {
                             if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Fetching a real masterpiece from Unsplash and generating caption... Please check your page after 15 seconds!");
+                                await sendMessageToFacebook(sender_psid, "Fetching a 4K masterpiece from Unsplash and generating caption... Please check your page after 15 seconds!");
                                 await autoPostToFacebook();
                             } else {
                                 let aiReply = await getGeminiResponse(userMessage, audioBase64);

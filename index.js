@@ -9,6 +9,9 @@ const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+// 🔒 Secured Unsplash Access Key
+const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -16,7 +19,6 @@ app.get('/webhook', (req, res) => {
 
     if (mode && token) {
         if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-            console.log('WEBHOOK_VERIFIED');
             res.status(200).send(challenge);
         } else {
             res.sendStatus(403);
@@ -42,81 +44,19 @@ function downloadAudioBase64(urlStr) {
     });
 }
 
-app.post('/webhook', async (req, res) => {
-    const body = req.body;
-    if (body.object === 'page') {
-        res.status(200).send('EVENT_RECEIVED');
-
-        for (const entry of body.entry) {
-            // ১. মেসেঞ্জারের মেসেজ চেক করা
-            if (entry.messaging) {
-                const webhook_event = entry.messaging[0];
-                const sender_psid = webhook_event.sender.id;
-
-                if (webhook_event.message) {
-                    let userMessage = webhook_event.message.text;
-                    let audioBase64 = null;
-
-                    if (webhook_event.message.attachments) {
-                        for (const attachment of webhook_event.message.attachments) {
-                            if (attachment.type === 'audio') {
-                                try {
-                                    audioBase64 = await downloadAudioBase64(attachment.payload.url);
-                                } catch(e) { console.error(e); }
-                                break;
-                            }
-                        }
-                    }
-
-                    if (userMessage || audioBase64) {
-                        try {
-                            if (userMessage) console.log(`[New Message]: ${userMessage}`);
-                            else console.log(`[New Audio Message Received]`);
-                            
-                            // নতুন ম্যাজিক কমান্ড: Auto Posting Test
-                            if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Swiss View style image generation started! Please check your Facebook page after 10-15 seconds.");
-                                await autoPostToFacebook();
-                            } else {
-                                let aiReply = await getGeminiResponse(userMessage, audioBase64);
-                                if (aiReply) {
-                                    await sendMessageToFacebook(sender_psid, aiReply);
-                                    console.log(`[Message Reply Sent Request Processed]`);
-                                }
-                            }
-                        } catch (e) { console.error(e); }
-                    }
-                }
-            }
-
-            // ২. ফেসবুক পোস্টের কমেন্ট চেক করা
-            if (entry.changes) {
-                for (const change of entry.changes) {
-                    if (change.field === 'feed' && change.value.item === 'comment' && change.value.verb === 'add') {
-                        const comment_id = change.value.comment_id;
-                        const message = change.value.message;
-                        const sender_id = change.value.from.id;
-                        const page_id = entry.id;
-
-                        if (sender_id !== page_id) {
-                            try {
-                                console.log(`[New Comment]: ${message}`);
-                                let aiReply = await getGeminiResponse(message, null);
-                                
-                                if (aiReply) {
-                                    await replyToComment(comment_id, aiReply);
-                                    console.log(`[Comment Reply Sent Request Processed]`);
-                                }
-                            } catch (e) { console.error('Error handling comment:', e); }
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        res.sendStatus(404);
-    }
-});
+// আনস্প্ল্যাশ থেকে ডেটা আনার জন্য ফাংশন
+function httpsGet(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+                try { resolve(JSON.parse(body)); } 
+                catch(e) { resolve(body); }
+            });
+        }).on('error', reject);
+    });
+}
 
 function httpsPost(url, data, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -134,13 +74,6 @@ function httpsPost(url, data, headers = {}) {
             res.on('end', () => {
                 let parsedBody = body;
                 try { parsedBody = JSON.parse(body); } catch(e) {}
-                
-                if (res.statusCode >= 400) {
-                    console.error(`\n❌ [Facebook API Error] Status: ${res.statusCode}`);
-                    console.error(JSON.stringify(parsedBody, null, 2));
-                    console.error(`-----------------------------------------\n`);
-                }
-                
                 resolve(parsedBody);
             });
         });
@@ -150,58 +83,114 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-// অটোমেটিক ছবি জেনারেট করে পোস্ট করার ফাংশন (Swiss View & Pixabay Style)
+// Unsplash থেকে রিয়েল ছবি এনে পোস্ট করার ফাংশন
 async function autoPostToFacebook() {
-    const prompt = `You are an expert social media manager for a Premium Nature Photography Facebook page inspired by the famous "Swiss View" page.
-Write a Facebook post caption about an extremely beautiful, breathtaking natural landscape in Switzerland or Europe (e.g., Lauterbrunnen valley, Zermatt, Matterhorn, crystal clear alpine lakes, or cozy mountain chalets).
-Include highly engaging text, emojis, and popular hashtags (like #SwissView #Switzerland #Nature #Wanderlust).
-
-IMPORTANT: You must format your response exactly like this:
-[CAPTION]
-(write the facebook post caption here)
-[PROMPT]
-(write a highly detailed image generation prompt in English here. The image must perfectly replicate the aesthetic of the "Swiss View" Facebook page and premium Pixabay stock photos. Use keywords like: "breathtaking Switzerland landscape, majestic Swiss Alps, lush green valley, crystal clear turquoise lake, cozy wooden chalet, ultra-vibrant colors, magical golden hour sunlight, HDR, photorealistic, 8k resolution, masterpiece, eye-catching, stunning scenery, epic cinematic lighting, highly detailed, awe-inspiring, heart-touching". Ensure the prompt creates an image that immediately grabs attention and feels incredibly magical.)`;
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-    const payload = {
-        contents: [{ parts: [{ text: prompt }] }]
-    };
-    
     try {
-        const data = await httpsPost(geminiUrl, payload);
-        let resultText = data.candidates[0].content.parts[0].text;
+        // ১. Unsplash থেকে অসাধারণ একটি রিয়েল ছবি আনা
+        const unsplashUrl = `https://api.unsplash.com/photos/random?query=switzerland,alps,nature,landscape&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
+        const unsplashData = await httpsGet(unsplashUrl);
         
-        let caption = "A beautiful day in nature! 🌿 #Nature #Switzerland";
-        let imagePrompt = "A breathtaking beautiful natural landscape in Switzerland, photorealistic, 8k";
-        
-        if (resultText.includes('[CAPTION]') && resultText.includes('[PROMPT]')) {
-            caption = resultText.split('[PROMPT]')[0].replace('[CAPTION]', '').trim();
-            imagePrompt = resultText.split('[PROMPT]')[1].trim();
+        if (!unsplashData || !unsplashData.urls) {
+            console.error("Unsplash error:", unsplashData);
+            return;
         }
+
+        const imageUrl = unsplashData.urls.regular;
+        // ছবির ভেতরে কী আছে সেটি পড়ে নেওয়া
+        const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking natural landscape in Switzerland";
+
+        // ২. Gemini-কে ছবির বর্ণনা দিয়ে সুন্দর একটি ক্যাপশন লেখানো
+        const prompt = `You are an expert social media manager for a Premium Nature Photography Facebook page.
+I have a beautiful photograph with the following description: "${imageDescription}"
+Write a highly engaging, breathtaking Facebook post caption for this exact photo (targeting a USA audience).
+Include emojis and popular hashtags (like #Nature #Switzerland #Wanderlust).
+Only return the caption text, nothing else.`;
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+        const payload = { contents: [{ parts: [{ text: prompt }] }] };
         
-        const encodedPrompt = encodeURIComponent(imagePrompt);
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true`;
-        
+        const geminiData = await httpsPost(geminiUrl, payload);
+        let caption = geminiData.candidates[0].content.parts[0].text.trim();
+
+        // ৩. ফেসবুকে পোস্ট করা
         const fbUrl = `https://graph.facebook.com/v20.0/me/photos?access_token=${PAGE_ACCESS_TOKEN}`;
-        const fbPayload = {
-            url: imageUrl,
-            message: caption
-        };
+        const fbPayload = { url: imageUrl, message: caption };
         
         const fbResponse = await httpsPost(fbUrl, fbPayload);
-        console.log("✅ Auto-Post Success:", fbResponse);
+        console.log("✅ Auto-Post Success with Unsplash:", fbResponse);
     } catch (e) {
         console.error("❌ Error in autoPostToFacebook:", e);
     }
 }
 
-// ট্রেনিং টেক্সট: শুধুমাত্র ইংরেজিতে উত্তর দেওয়ার জন্য
+app.post('/webhook', async (req, res) => {
+    const body = req.body;
+    if (body.object === 'page') {
+        res.status(200).send('EVENT_RECEIVED');
+
+        for (const entry of body.entry) {
+            if (entry.messaging) {
+                const webhook_event = entry.messaging[0];
+                const sender_psid = webhook_event.sender.id;
+
+                if (webhook_event.message) {
+                    let userMessage = webhook_event.message.text;
+                    let audioBase64 = null;
+
+                    if (webhook_event.message.attachments) {
+                        for (const attachment of webhook_event.message.attachments) {
+                            if (attachment.type === 'audio') {
+                                try {
+                                    audioBase64 = await downloadAudioBase64(attachment.payload.url);
+                                } catch(e) {}
+                                break;
+                            }
+                        }
+                    }
+
+                    if (userMessage || audioBase64) {
+                        try {
+                            if (userMessage && userMessage.toLowerCase() === 'post now') {
+                                await sendMessageToFacebook(sender_psid, "Fetching a real masterpiece from Unsplash and generating caption... Please check your page after 15 seconds!");
+                                await autoPostToFacebook();
+                            } else {
+                                let aiReply = await getGeminiResponse(userMessage, audioBase64);
+                                if (aiReply) await sendMessageToFacebook(sender_psid, aiReply);
+                            }
+                        } catch (e) { console.error(e); }
+                    }
+                }
+            }
+
+            if (entry.changes) {
+                for (const change of entry.changes) {
+                    if (change.field === 'feed' && change.value.item === 'comment' && change.value.verb === 'add') {
+                        const comment_id = change.value.comment_id;
+                        const message = change.value.message;
+                        const sender_id = change.value.from.id;
+                        const page_id = entry.id;
+
+                        if (sender_id !== page_id) {
+                            try {
+                                let aiReply = await getGeminiResponse(message, null);
+                                if (aiReply) await replyToComment(comment_id, aiReply);
+                            } catch (e) {}
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        res.sendStatus(404);
+    }
+});
+
 const training_text = `You are an expert social media manager and friendly assistant for a Premium Nature Photography Facebook page. 
 IMPORTANT RULES:
-1. You MUST reply ONLY in English. Do not use Bengali or any other language, even if the user speaks Bengali.
+1. You MUST reply ONLY in English. Do not use Bengali or any other language.
 2. Keep your replies short, natural, and engaging (1-2 sentences maximum).
-3. If someone says "Wow", "Nice", or praises the photo, give a short friendly thank you with an emoji (e.g. "Thank you so much! 💚").
-4. If someone asks "Where is this?" or "Location?", give a relevant, imaginative, and beautiful location name (e.g., "This is inspired by the breathtaking Swiss Alps!" or "This beautiful spot reminds us of Glacier National Park!").
+3. If someone praises the photo, give a short friendly thank you with an emoji.
+4. If someone asks "Where is this?" or "Location?", give a relevant, imaginative, and beautiful location name (e.g., "This is inspired by the breathtaking Swiss Alps!").
 5. Be polite, warm, and professional.`;
 
 async function getGeminiResponse(text, audioBase64) {
@@ -242,7 +231,7 @@ async function sendMessageToFacebook(sender_psid, text) {
 async function replyToComment(comment_id, text) {
     const url = `https://graph.facebook.com/v20.0/${comment_id}/comments?access_token=${PAGE_ACCESS_TOKEN}`;
     const payload = { message: text };
-    try { await httpsPost(url, payload); } catch (e) { console.error(e); }
+    try { await httpsPost(url, payload); } catch (e) {}
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

@@ -74,22 +74,8 @@ app.post('/webhook', async (req, res) => {
                             else console.log(`[New Audio Message Received]`);
                             
                             let aiReply = await getGeminiResponse(userMessage, audioBase64);
-                            let audioUrl = null;
-
-                            if (aiReply.includes('[AUDIO_WELCOME]')) {
-                                audioUrl = "https://eakub.pro.bd/voice/bike-or-car.mp3";
-                                aiReply = aiReply.replace('[AUDIO_WELCOME]', '').trim();
-                            } else if (aiReply.includes('[AUDIO_BIKE]')) {
-                                audioUrl = "https://eakub.pro.bd/voice/about-bike.mp3";
-                                aiReply = aiReply.replace('[AUDIO_BIKE]', '').trim();
-                            }
                             
-                            if (audioUrl) {
-                                await sendAudioToFacebook(sender_psid, audioUrl);
-                                console.log(`[Audio Sent Request Processed]`);
-                            }
-                            // মেসেজের ক্ষেত্রে হাইড করার অপশন নেই, তাই এখানে ফিল্টার করছি
-                            if (aiReply && !aiReply.includes('[HIDE_COMMENT]')) {
+                            if (aiReply) {
                                 await sendMessageToFacebook(sender_psid, aiReply);
                                 console.log(`[Message Reply Sent Request Processed]`);
                             }
@@ -113,22 +99,9 @@ app.post('/webhook', async (req, res) => {
                                 console.log(`[New Comment]: ${message}`);
                                 let aiReply = await getGeminiResponse(message, null);
                                 
-                                // যদি এআই খারাপ কমেন্ট হিসেবে শনাক্ত করে
-                                if (aiReply.includes('[HIDE_COMMENT]')) {
-                                    await hideComment(comment_id);
-                                    console.log(`[Comment Hidden Successfully]: ${message}`);
-                                } else {
-                                    // কমেন্টে অডিও দেওয়া যায় না, তাই ট্যাগগুলো রিমুভ করে শুধু টেক্সট রাখা হচ্ছে
-                                    aiReply = aiReply.replace('[AUDIO_WELCOME]', '').replace('[AUDIO_BIKE]', '').trim();
-                                    
-                                    // নতুন আপডেট: কমেন্টের শেষে বিস্তারিত জানার টেক্সট যোগ করা (ডেমো নাম্বার সহ)
-                                    const ctaText = "\n\nমটোলকের প্রোডাক্ট সম্পর্কে বিস্তারিত জানতে বা অর্ডার করতে 01500000000 নাম্বারে WhatsApp-এ মেসেজ করুন অথবা আমাদের ফেসবুক পেজে ইনবক্স করুন।";
-                                    aiReply = aiReply + ctaText;
-                                    
-                                    if (aiReply) {
-                                        await replyToComment(comment_id, aiReply);
-                                        console.log(`[Comment Reply Sent Request Processed]`);
-                                    }
+                                if (aiReply) {
+                                    await replyToComment(comment_id, aiReply);
+                                    console.log(`[Comment Reply Sent Request Processed]`);
                                 }
                             } catch (e) { console.error('Error handling comment:', e); }
                         }
@@ -158,7 +131,6 @@ function httpsPost(url, data, headers = {}) {
                 let parsedBody = body;
                 try { parsedBody = JSON.parse(body); } catch(e) {}
                 
-                // ফেসবুক কোনো Error দিলে সেটি এখানে প্রিন্ট হবে
                 if (res.statusCode >= 400) {
                     console.error(`\n❌ [Facebook API Error] Status: ${res.statusCode}`);
                     console.error(JSON.stringify(parsedBody, null, 2));
@@ -174,49 +146,8 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-const training_text = `তুমি "Motolock" (মটোলক) পেজের একজন রক্তমাংসের মানুষ কাস্টমার সাপোর্ট এজেন্ট। তোমার কাজ হলো কাস্টমারদের সাথে একদম ন্যাচারাল মানুষের মতো কথা বলা এবং জিপিএস প্রোডাক্ট বিক্রি করতে সাহায্য করা। 
-
-খুব জরুরি নির্দেশনা (অবশ্যই মানতে হবে):
-১. কাস্টমার যেন ঘুণাক্ষরেও বুঝতে না পারে যে তুমি কোনো বট বা এআই। একদম সাধারণ মানুষের মতো ছোট ও প্রফেশনাল মেসেজ দিবে।
-২. কাস্টমারকে সব সময় "স্যার" (Sir) বলে সম্মানের সাথে সম্বোধন করবে। কখনোই "ভাইয়া" বা অন্য কিছু বলবে না।
-৩. বারবার "আসসালামু আলাইকুম" বা স্বাগতম জানাবে না।
-৪. কাস্টমার যা জানতে চাইবে, ঠিক ততটুকুই উত্তর দিবে।
-৫. মেসেজে সুন্দর করে ইমোজি (😊, 🛵, 🚘, ✅, ৳) ব্যবহার করবে।
-৬. কাস্টমার ভয়েস মেসেজ পাঠালে তুমি সেটি শুনে স্বাভাবিক টেক্সট বা ভয়েস মেসেজেই উত্তর দিবে।
-৭. কখনোই বলবে না যে তুমি এআই বা বট।
-৮. কেউ যদি জাহাজ, বাস, ট্রাক বা অন্য কোনো আনকমন গাড়ির জন্য জিপিএস চায়, তাকে কখনো না করবে না। বলবে, "আমাদের জিপিএসগুলো মূলত বাইক এবং কারের জন্য ডিজাইন করা, তবে আপনি চাইলে নিশ্চিন্তে এটি আপনার জাহাজে বা বড় গাড়িতেও ব্যবহার করতে পারবেন!" এরপর বড় গাড়ির জন্য ১২৯৯ টাকার প্রিমিয়াম জিপিএসটি সাজেস্ট করবে।
-৯. (ভেরি ইম্পর্ট্যান্ট!) যদি কোনো কাস্টমার কমেন্টে বা মেসেজে গালিগালাজ করে, অথবা 'ফালতু', 'চিটার', 'বাটপার', 'ভুয়া', 'প্রতারক', 'চোর' বা এ জাতীয় কোনো খারাপ বা নেতিবাচক শব্দ ব্যবহার করে, তবে তুমি কোনো উত্তর দিবে পরিচয় না। এর বদলে তুমি তোমার মেসেজের ভেতরে শুধুমাত্র এই একটি সিক্রেট কোড লিখবে: [HIDE_COMMENT]। আর যদি কমেন্টটি ভালো বা সাধারণ হয়, তবে আগের নিয়ম অনুযায়ী স্বাভাবিক উত্তর দিবে।
-
-[অডিও মেসেজ পাঠানোর নিয়ম]
-তোমার কাছে ২টি প্রি-রেকর্ডেড অডিও মেসেজ আছে:
-১. প্রথমবার কোনো কাস্টমার মেসেজ দিলে (যেমন: Hi, Hello, দাম কত, সালাম দিলে), তুমি তাকে একটি ওয়েলকাম অডিও পাঠাবে। ওয়েলকাম অডিও পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_WELCOME]
-২. কাস্টমার যদি স্পেসিফিকভাবে "বাইক" বা "মোটরসাইকেল" এর জিপিএস সম্পর্কে জানতে চায়, শুধুমাত্র তখনই তুমি তাকে বাইকের অডিওটি পাঠাবে। অডিওটি পাঠাতে তোমার মেসেজের ভেতরে লিখবে: [AUDIO_BIKE]। 
-খবরদার! কাস্টমার যদি প্রাইভেট কার, বাস, ট্রাক বা অন্য কোনো গাড়ির কথা বলে, তবে কখনোই [AUDIO_BIKE] পাঠাবে না! তখন শুধু টেক্সট মেসেজে কারের জিপিএসের দাম বলবে।
-নোট: অডিও পাঠানোর কোডটি লেখার পাশাপাশি তুমি চাইলে ছোট করে টেক্সটেও কিছু লিখে দিতে পারো (যেমন: "জি স্যার, এই ভয়েসটি শুনুন")।
-
-[প্রোডাক্ট ও প্রাইজ লিস্ট]
-🏍️ বাইক, সিএনজি, অটোরিকশা:
-- জিপিএস ট্র্যাকার = ১৭৯৯৳ (মাসিক বিল ১০০ টাকা করে, ৬ মাসের বিল একসাথে দিতে হবে)।
-
-🪙 কয়েন ট্যাগ (সিম ছাড়া কাজ করে):
-- S21 ট্যাগ = ২৪৯৯৳ (মাসিক বিল নাই, আইফোন ও এন্ড্রয়েড সাপোর্টেড)
-- A41 ট্যাগ (MotoLock Android Tag) = ১৯৯৯৳ (মাসিক বিল নাই, এন্ড্রয়েড সাপোর্টেড)
-- D11 ট্যাগ = ২৯৯৯৳ (মাসিক বিল নাই)
-
-🚘 বড় গাড়ির (কার/পিকআপ/বাস/ট্রাক/জাহাজ) জন্য:
-- প্রিমিয়াম জিপিএস = ১২৯৯৳ (মাসিক বিল ১৯০ টাকা, লাইভ লোকেশন, ৩০ দিন এর প্লেবেক)
-
-[অর্ডার করার নিয়ম]
-অর্ডার করতে চাইলে এই মেসেজটি দিবে:
-"অর্ডার কনফার্ম করতে 01500000000 (নগদ/বিকাশ) - এই নাম্বারে কুরিয়ার চার্জ ১৫০ টাকা cash out করে স্ক্রিনশট দিন। 
-আর সাথে আপনার নাম, মোবাইল নাম্বার, ফুল এড্রেস এবং গাড়ির নামটা লিখে দিন।"
-
-[সেটআপ গাইড]
-১/ ML3 ডিভাইসটি পাওয়ার পর একটি গ্রামীণ সিম কিনে টেকনিশিয়ানের মাধ্যমে লাগাতে হবে।
-২/ টেকনিশিয়ানকে দেখানোর ভিডিও: https://youtu.be/tzB3evvwRww
-৩/ লাগানোর পর হোয়াটসঅ্যাপে দিতে হবে: জিপিএস সিম নাম্বার, আইডি নাম্বার, মেইল, ফোন নাম্বার, গাড়ির রেজিষ্ট্রেশন।
-৪/ আমরা একটিভ করলে অ্যাপ নামিয়ে লগইন করতে হবে (আইডি: জিমেইল, পাসওয়ার্ড: Mt123456@)।
-৫/ সার্ভার প্রবলেম হলে SMS দিয়ে লক/আনলক করা যায়: আনলক (RELAY,0#), লক (RELAY,1#)`;
+// ব্রেইন রিসেট! এখন সে শুধু একটি সাধারণ এআই। 
+const training_text = `তুমি একটি সাধারণ, স্মার্ট এবং হেল্পফুল এআই অ্যাসিস্ট্যান্ট। তোমার কাজ হলো মানুষের যেকোনো প্রশ্নের সুন্দর করে উত্তর দেওয়া। তুমি একদম স্বাভাবিক মানুষের মতো করে কথা বলবে। কোনো নির্দিষ্ট ব্র্যান্ড বা কোম্পানির হয়ে কথা বলবে না।`;
 
 async function getGeminiResponse(text, audioBase64) {
     if (!GEMINI_API_KEY) return "System error: API Key missing!";
@@ -253,31 +184,10 @@ async function sendMessageToFacebook(sender_psid, text) {
     await httpsPost(url, payload);
 }
 
-async function sendAudioToFacebook(sender_psid, audioUrl) {
-    const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
-    const payload = { 
-        recipient: { id: sender_psid }, 
-        message: { 
-            attachment: {
-                type: "audio",
-                payload: { url: audioUrl, is_reusable: true }
-            }
-        } 
-    };
-    try { await httpsPost(url, payload); } catch (e) { console.error(e); }
-}
-
 async function replyToComment(comment_id, text) {
     const url = `https://graph.facebook.com/v20.0/${comment_id}/comments?access_token=${PAGE_ACCESS_TOKEN}`;
     const payload = { message: text };
     try { await httpsPost(url, payload); } catch (e) { console.error(e); }
-}
-
-// নতুন ফাংশন: খারাপ কমেন্ট হাইড করার জন্য
-async function hideComment(comment_id) {
-    const url = `https://graph.facebook.com/v20.0/${comment_id}?access_token=${PAGE_ACCESS_TOKEN}`;
-    const payload = { is_hidden: true };
-    try { await httpsPost(url, payload); } catch (e) { console.error('Error hiding comment:', e); }
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));

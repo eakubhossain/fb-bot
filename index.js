@@ -8,8 +8,6 @@ const PORT = process.env.PORT || 3000;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// 🔒 Secured Unsplash Access Key
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 
 app.get('/webhook', (req, res) => {
@@ -82,33 +80,28 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-// কোন ধরনের ছবি পোস্ট হবে, তা ট্র্যাক করার জন্য একটি ভ্যারিয়েবল
 let isNextCastle = true;
 
 async function autoPostToFacebook() {
     try {
-        // ক্যাটাগরি ঠিক করা (একবার Castle, একবার Nature)
-        const searchQuery = isNextCastle ? "castle,scotland,germany,ancient,architecture" : "switzerland,alps,nature,landscape";
-        const promptCategory = isNextCastle ? "an ancient, majestic castle in Scotland or Germany" : "a breathtaking natural landscape in Switzerland";
+        // Query গুলো সিম্পল করা হলো যাতে Unsplash সহজে খুঁজে পায়
+        const searchQuery = isNextCastle ? "castle,ancient" : "switzerland,landscape";
+        const promptCategory = isNextCastle ? "an ancient, majestic castle" : "a breathtaking natural landscape in Switzerland";
         
         console.log(`\n🔍 Fetching a [${isNextCastle ? 'CASTLE' : 'NATURE'}] image from Unsplash...`);
-        
-        // পরের বারের জন্য ক্যাটাগরি পাল্টে দেওয়া
         isNextCastle = !isNextCastle;
 
-        // ১. Unsplash থেকে ছবি আনা
         const unsplashUrl = `https://api.unsplash.com/photos/random?query=${searchQuery}&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
         const unsplashData = await httpsGet(unsplashUrl);
         
         if (!unsplashData || !unsplashData.urls) {
-            console.error("Unsplash error:", unsplashData);
+            console.error("❌ Unsplash error:", unsplashData);
             return;
         }
 
         const imageUrl = unsplashData.urls.full;
         const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking scenery";
 
-        // ২. Gemini-কে দিয়ে ক্যাপশন লেখানো
         const prompt = `You are an expert social media manager for a Premium Photography Facebook page.
 I have a beautiful photograph of ${promptCategory} with the following description: "${imageDescription}"
 Write a highly engaging, breathtaking Facebook post caption for this exact photo (targeting a USA audience).
@@ -121,7 +114,6 @@ Only return the caption text, nothing else.`;
         const geminiData = await httpsPost(geminiUrl, payload);
         let caption = geminiData.candidates[0].content.parts[0].text.trim();
 
-        // ৩. ফেসবুকে পোস্ট করা
         const fbUrl = `https://graph.facebook.com/v20.0/me/photos?access_token=${PAGE_ACCESS_TOKEN}`;
         const fbPayload = { url: imageUrl, message: caption };
         

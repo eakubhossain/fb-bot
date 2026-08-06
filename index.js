@@ -70,6 +70,10 @@ app.post('/webhook', async (req, res) => {
 
                     if (userMessage || audioBase64) {
                         try {
+                            // এই লাইনগুলো নতুন করে যোগ করা হয়েছে (লগ দেখার জন্য)
+                            if (userMessage) console.log(`[New Message]: ${userMessage}`);
+                            else console.log(`[New Audio Message Received]`);
+                            
                             let aiReply = await getGeminiResponse(userMessage, audioBase64);
                             let audioUrl = null;
 
@@ -83,9 +87,11 @@ app.post('/webhook', async (req, res) => {
                             
                             if (audioUrl) {
                                 await sendAudioToFacebook(sender_psid, audioUrl);
+                                console.log(`[Audio Sent]: ${audioUrl}`);
                             }
                             if (aiReply) {
                                 await sendMessageToFacebook(sender_psid, aiReply);
+                                console.log(`[Message Reply Sent]: ${aiReply}`);
                             }
                         } catch (e) { console.error(e); }
                     }
@@ -164,7 +170,7 @@ const training_text = `তুমি "Motolock" (মটোলক) পেজের
 তোমার কাছে ২টি প্রি-রেকর্ডেড অডিও মেসেজ আছে:
 ১. প্রথমবার কোনো কাস্টমার মেসেজ দিলে (যেমন: Hi, Hello, দাম কত, সালাম দিলে), তুমি তাকে একটি ওয়েলকাম অডিও পাঠাবে। ওয়েলকাম অডিও পাঠাতে হলে তোমার মেসেজের ভেতরে ঠিক এই লেখাটি লিখবে: [AUDIO_WELCOME]
 ২. কাস্টমার যদি স্পেসিফিকভাবে "বাইক" বা "মোটরসাইকেল" এর জিপিএস সম্পর্কে জানতে চায়, শুধুমাত্র তখনই তুমি তাকে বাইকের অডিওটি পাঠাবে। অডিওটি পাঠাতে তোমার মেসেজের ভেতরে লিখবে: [AUDIO_BIKE]। 
-খবরদার! কাস্টমার যদি প্রাইভেট কার, বাস, ট্রাক বা অন্য কোনো গাড়ির কথা বলে, তবে কখনোই [AUDIO_BIKE] পাঠাবে না! তখন শুধু টেক্সট মেসেজে কারের জিপিএসের দাম বলবে।
+খবরদার! কাস্টমার যদি প্রাইভেট কার, বাস, ট্রাক বা অন্য কোনো গাড়ির কথা বলে, তবে কখনোই [AUDIO_BIKE] পাঠাবে বোমা! তখন শুধু টেক্সট মেসেজে কারের জিপিএসের দাম বলবে।
 নোট: অডিও পাঠানোর কোডটি লেখার পাশাপাশি তুমি চাইলে ছোট করে টেক্সটেও কিছু লিখে দিতে পারো (যেমন: "জি স্যার, এই ভয়েসটি শুনুন")।
 
 [প্রোডাক্ট ও প্রাইজ লিস্ট]

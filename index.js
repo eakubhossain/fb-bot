@@ -8,9 +8,11 @@ const PORT = process.env.PORT || 3000;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 
-// 🌟 Cron-job.org এর জন্য রাউট
+// 🌟 আপনার প্রোডাক্টের আসল ছবির লিংকটি এখানে দিন
+const PRODUCT_IMAGE_URL = "https://eakub.pro.bd/charger.jpg"; 
+
+// Cron-job.org এর জন্য রাউট
 app.get('/', (req, res) => {
     res.status(200).send("E-commerce Bot Server is awake!");
 });
@@ -47,19 +49,6 @@ function downloadAudioBase64(urlStr) {
     });
 }
 
-function httpsGet(url) {
-    return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
-            let body = '';
-            res.on('data', (chunk) => body += chunk);
-            res.on('end', () => {
-                try { resolve(JSON.parse(body)); } 
-                catch(e) { resolve(body); }
-            });
-        }).on('error', reject);
-    });
-}
-
 function httpsPost(url, data, headers = {}) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
@@ -83,47 +72,6 @@ function httpsPost(url, data, headers = {}) {
         req.write(JSON.stringify(data));
         req.end();
     });
-}
-
-async function autoPostToFacebook() {
-    try {
-        const searchQuery = "luxury car,dashboard,road trip";
-        console.log(`\n🔍 Fetching a CAR image from Unsplash...`);
-
-        const unsplashUrl = `https://api.unsplash.com/photos/random?query=${searchQuery}&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
-        const unsplashData = await httpsGet(unsplashUrl);
-        
-        if (!unsplashData || !unsplashData.urls) {
-            console.error("❌ Unsplash error:", unsplashData);
-            return;
-        }
-
-        const imageUrl = unsplashData.urls.raw + "&w=2560&q=80&fm=jpg";
-        const imageDescription = unsplashData.description || unsplashData.alt_description || "A beautiful car interior";
-
-        // 🌟 স্পেশাল ই-কমার্স প্রম্পট (ক্যাপশনের জন্য)
-        const prompt = `You are an expert social media manager for a Facebook page selling premium car accessories in Bangladesh.
-I have a photograph of a car scene with the following description: "${imageDescription}"
-Write a highly engaging Facebook post caption in BENGALI for this photo.
-The caption should appreciate the car's interior/driving, and smartly introduce our "M4+ 120W Retractable Car Charger" (which solves messy cables, has 5 ports, and auto-retracting cables) as a must-have upgrade.
-Mention the price: Only ৳990 (Cash on delivery available).
-Include emojis and hashtags (like #CarAccessories #CarCharger #M4Plus #PremiumGadgets).
-Only return the Bengali caption text, nothing else.`;
-
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-        const payload = { contents: [{ parts: [{ text: prompt }] }] };
-        
-        const geminiData = await httpsPost(geminiUrl, payload);
-        let caption = geminiData.candidates[0].content.parts[0].text.trim();
-
-        const fbUrl = `https://graph.facebook.com/v20.0/me/photos?access_token=${PAGE_ACCESS_TOKEN}`;
-        const fbPayload = { url: imageUrl, message: caption };
-        
-        const fbResponse = await httpsPost(fbUrl, fbPayload);
-        console.log("✅ Auto-Post Success for Car Charger:", fbResponse);
-    } catch (e) {
-        console.error("❌ Error in autoPostToFacebook:", e);
-    }
 }
 
 app.post('/webhook', async (req, res) => {
@@ -151,12 +99,15 @@ app.post('/webhook', async (req, res) => {
 
                     if (userMessage || audioBase64) {
                         try {
-                            if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "গাড়ির চমৎকার একটি ছবি আনস্প্ল্যাশ থেকে নিয়ে M4+ কার চার্জারের প্রমোশনসহ পোস্ট করা হচ্ছে... দয়া করে ১৫ সেকেন্ড পর পেজটি চেক করুন!");
-                                await autoPostToFacebook();
-                            } else {
-                                let aiReply = await getGeminiResponse(userMessage, audioBase64);
-                                if (aiReply) await sendMessageToFacebook(sender_psid, aiReply);
+                            let aiReply = await getGeminiResponse(userMessage, audioBase64);
+                            if (aiReply) {
+                                if (aiReply.includes('[SEND_IMAGE]')) {
+                                    aiReply = aiReply.replace('[SEND_IMAGE]', '').trim();
+                                    await sendMessageToFacebook(sender_psid, aiReply);
+                                    await sendImageToFacebook(sender_psid, PRODUCT_IMAGE_URL);
+                                } else {
+                                    await sendMessageToFacebook(sender_psid, aiReply);
+                                }
                             }
                         } catch (e) { console.error(e); }
                     }
@@ -192,20 +143,20 @@ IMPORTANT RULES:
 1. You MUST reply ONLY in Bengali (using Bengali script). Do not use English script.
 2. Keep your replies friendly, polite, persuasive, and natural.
 3. Use emojis to make the conversation engaging.
-4. If a customer asks to order, ask for their: Full Name, Phone Number, and Full Delivery Address.
+4. If a customer asks to see a real picture or photo of the product, you MUST include this exact secret tag in your reply: [SEND_IMAGE]. The system will use this tag to attach the photo.
+5. If a customer asks to order, ask for their: Full Name, Phone Number, and Full Delivery Address.
 
 PRODUCT DETAILS (M4+ 120W Retractable Car Charger Edition):
-- Key Features: 80cm auto-retractable cables (pull to extend, pull slightly to roll back). Solves messy cable problems in cars!
-- Ports (5-in-1): 1 Type-C fixed cable (PD 30W), 1 iPhone/Lightning fixed cable (2.4A), 1 USB-A port (QC 3.0), 2 Type-C female ports.
-- Power: 120W super fast shared charging. Can charge 5 devices at once (phones, tablets, smartwatches).
-- Safety: Smart safety protection chip (prevents over-heat, short circuit).
-- Design: 180-degree flexible pivot joint, Live digital voltage display for car battery health.
+- Key Features: 80cm auto-retractable cables. Solves messy cable problems in cars!
+- Ports (5-in-1): 1 Type-C fixed cable, 1 iPhone fixed cable, 1 USB-A port, 2 Type-C female ports.
+- Power: 120W super fast shared charging. Can charge 5 devices at once.
+- Safety: Smart safety protection chip, 180-degree flexible pivot joint, Live digital voltage display.
 
 PRICE & DELIVERY:
-- 1 Piece (Single Pack): ৳990 (Discounted from ৳1550).
-- 2 Pieces (Combo Offer): ৳1,850 (Discounted from ৳3100). [Save ৳130]
+- 1 Piece (Single Pack): ৳990
+- 2 Pieces (Combo Offer): ৳1,850 [Save ৳130]
 - Delivery Charge: Inside Dhaka ৳60, Outside Dhaka ৳100.
-- Payment Method: Cash on Delivery (Pay after receiving the product in hand). No advance payment needed!
+- Payment Method: Cash on Delivery (Pay after receiving the product).
 - Delivery Time: Within 72 hours across Bangladesh.`;
 
 async function getGeminiResponse(text, audioBase64) {
@@ -240,7 +191,23 @@ async function getGeminiResponse(text, audioBase64) {
 async function sendMessageToFacebook(sender_psid, text) {
     const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
     const payload = { recipient: { id: sender_psid }, message: { text: text } };
-    await httpsPost(url, payload);
+    const response = await httpsPost(url, payload);
+    if (response.error) console.error("❌ FB Send Error:", response.error);
+}
+
+async function sendImageToFacebook(sender_psid, imageUrl) {
+    const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
+    const payload = { 
+        recipient: { id: sender_psid }, 
+        message: { 
+            attachment: {
+                type: "image",
+                payload: { url: imageUrl, is_reusable: true }
+            }
+        } 
+    };
+    const response = await httpsPost(url, payload);
+    if (response.error) console.error("❌ FB Image Error:", response.error);
 }
 
 async function replyToComment(comment_id, text) {
@@ -250,12 +217,3 @@ async function replyToComment(comment_id, text) {
 }
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
-
-// ==========================================
-// ⏰ অটো-পোস্টিং শিডিউল (প্রতি ৮ ঘণ্টা পর পর)
-// ==========================================
-const EIGHT_HOURS = 8 * 60 * 60 * 1000;
-setInterval(async () => {
-    console.log("⏰ 8 Hours passed! Running Auto-Poster for M4+ Car Charger...");
-    await autoPostToFacebook();
-}, EIGHT_HOURS);

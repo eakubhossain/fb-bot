@@ -10,6 +10,11 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 
+// 🌟 Cron-job.org এর জন্য রাউট
+app.get('/', (req, res) => {
+    res.status(200).send("E-commerce Bot Server is awake!");
+});
+
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -80,15 +85,10 @@ function httpsPost(url, data, headers = {}) {
     });
 }
 
-let isNextCastle = true;
-
 async function autoPostToFacebook() {
     try {
-        const searchQuery = isNextCastle ? "castle,ancient" : "switzerland,landscape";
-        const promptCategory = isNextCastle ? "an ancient, majestic castle" : "a breathtaking natural landscape in Switzerland";
-        
-        console.log(`\n🔍 Fetching a [${isNextCastle ? 'CASTLE' : 'NATURE'}] image from Unsplash...`);
-        isNextCastle = !isNextCastle;
+        const searchQuery = "luxury car,dashboard,road trip";
+        console.log(`\n🔍 Fetching a CAR image from Unsplash...`);
 
         const unsplashUrl = `https://api.unsplash.com/photos/random?query=${searchQuery}&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
         const unsplashData = await httpsGet(unsplashUrl);
@@ -98,16 +98,17 @@ async function autoPostToFacebook() {
             return;
         }
 
-        // 🌟 ম্যাজিক সলিউশন: 10MB লিমিট এড়াতে কাস্টম 2.5K রেজ্যুলেশন (High Quality, Low File Size)
         const imageUrl = unsplashData.urls.raw + "&w=2560&q=80&fm=jpg";
-        
-        const imageDescription = unsplashData.description || unsplashData.alt_description || "A breathtaking scenery";
+        const imageDescription = unsplashData.description || unsplashData.alt_description || "A beautiful car interior";
 
-        const prompt = `You are an expert social media manager for a Premium Photography Facebook page.
-I have a beautiful photograph of ${promptCategory} with the following description: "${imageDescription}"
-Write a highly engaging, breathtaking Facebook post caption for this exact photo (targeting a USA audience).
-Include emojis and popular hashtags.
-Only return the caption text, nothing else.`;
+        // 🌟 স্পেশাল ই-কমার্স প্রম্পট (ক্যাপশনের জন্য)
+        const prompt = `You are an expert social media manager for a Facebook page selling premium car accessories in Bangladesh.
+I have a photograph of a car scene with the following description: "${imageDescription}"
+Write a highly engaging Facebook post caption in BENGALI for this photo.
+The caption should appreciate the car's interior/driving, and smartly introduce our "M4+ 120W Retractable Car Charger" (which solves messy cables, has 5 ports, and auto-retracting cables) as a must-have upgrade.
+Mention the price: Only ৳990 (Cash on delivery available).
+Include emojis and hashtags (like #CarAccessories #CarCharger #M4Plus #PremiumGadgets).
+Only return the Bengali caption text, nothing else.`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
         const payload = { contents: [{ parts: [{ text: prompt }] }] };
@@ -119,7 +120,7 @@ Only return the caption text, nothing else.`;
         const fbPayload = { url: imageUrl, message: caption };
         
         const fbResponse = await httpsPost(fbUrl, fbPayload);
-        console.log("✅ Auto-Post Success with Unsplash:", fbResponse);
+        console.log("✅ Auto-Post Success for Car Charger:", fbResponse);
     } catch (e) {
         console.error("❌ Error in autoPostToFacebook:", e);
     }
@@ -151,7 +152,7 @@ app.post('/webhook', async (req, res) => {
                     if (userMessage || audioBase64) {
                         try {
                             if (userMessage && userMessage.toLowerCase() === 'post now') {
-                                await sendMessageToFacebook(sender_psid, "Fetching a 2.5K masterpiece (Castle/Nature) from Unsplash... Please check your page after 15 seconds!");
+                                await sendMessageToFacebook(sender_psid, "গাড়ির চমৎকার একটি ছবি আনস্প্ল্যাশ থেকে নিয়ে M4+ কার চার্জারের প্রমোশনসহ পোস্ট করা হচ্ছে... দয়া করে ১৫ সেকেন্ড পর পেজটি চেক করুন!");
                                 await autoPostToFacebook();
                             } else {
                                 let aiReply = await getGeminiResponse(userMessage, audioBase64);
@@ -185,22 +186,36 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-const training_text = `You are an expert social media manager and friendly assistant for a Premium Photography Facebook page. 
+// 🌟 এআই বটের মেমোরি / সিস্টেম ইন্সট্রাকশন
+const training_text = `You are a highly skilled and friendly sales assistant for an E-commerce Facebook page in Bangladesh selling the "M4+ 120W Retractable Car Charger".
 IMPORTANT RULES:
-1. You MUST reply ONLY in English. Do not use Bengali or any other language.
-2. Keep your replies short, natural, and engaging (1-2 sentences maximum).
-3. If someone praises the photo, give a short friendly thank you with an emoji.
-4. If someone asks "Where is this?" or "Location?", give a relevant, imaginative, and beautiful location name (e.g., "This is inspired by the breathtaking landscapes of Europe!").
-5. Be polite, warm, and professional.`;
+1. You MUST reply ONLY in Bengali (using Bengali script). Do not use English script.
+2. Keep your replies friendly, polite, persuasive, and natural.
+3. Use emojis to make the conversation engaging.
+4. If a customer asks to order, ask for their: Full Name, Phone Number, and Full Delivery Address.
+
+PRODUCT DETAILS (M4+ 120W Retractable Car Charger Edition):
+- Key Features: 80cm auto-retractable cables (pull to extend, pull slightly to roll back). Solves messy cable problems in cars!
+- Ports (5-in-1): 1 Type-C fixed cable (PD 30W), 1 iPhone/Lightning fixed cable (2.4A), 1 USB-A port (QC 3.0), 2 Type-C female ports.
+- Power: 120W super fast shared charging. Can charge 5 devices at once (phones, tablets, smartwatches).
+- Safety: Smart safety protection chip (prevents over-heat, short circuit).
+- Design: 180-degree flexible pivot joint, Live digital voltage display for car battery health.
+
+PRICE & DELIVERY:
+- 1 Piece (Single Pack): ৳990 (Discounted from ৳1550).
+- 2 Pieces (Combo Offer): ৳1,850 (Discounted from ৳3100). [Save ৳130]
+- Delivery Charge: Inside Dhaka ৳60, Outside Dhaka ৳100.
+- Payment Method: Cash on Delivery (Pay after receiving the product in hand). No advance payment needed!
+- Delivery Time: Within 72 hours across Bangladesh.`;
 
 async function getGeminiResponse(text, audioBase64) {
-    if (!GEMINI_API_KEY) return "System error: API Key missing!";
+    if (!GEMINI_API_KEY) return "সিস্টেম এরর: API Key পাওয়া যায়নি!";
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
     let partsArray = [];
     if (text) partsArray.push({ text: text });
-    else if (audioBase64) partsArray.push({ text: "The user sent an audio message. Please listen to it and reply according to your instructions." });
+    else if (audioBase64) partsArray.push({ text: "কাস্টমার একটি ভয়েস মেসেজ পাঠিয়েছেন। দয়া করে সেটি শুনুন এবং উপরের নির্দেশিকা অনুযায়ী বাংলায় রিপ্লাই দিন।" });
 
     if (audioBase64) {
         partsArray.push({ inlineData: { mimeType: "audio/mp4", data: audioBase64 } });
@@ -216,9 +231,9 @@ async function getGeminiResponse(text, audioBase64) {
         if (data.candidates && data.candidates.length > 0) {
             return data.candidates[0].content.parts[0].text;
         }
-        return "I am unable to answer right now, please try again later.";
+        return "আমি এই মুহূর্তে উত্তর দিতে পারছি না, দয়া করে একটু পর আবার চেষ্টা করুন।";
     } catch (error) {
-        return "Sorry, we are facing some technical issues.";
+        return "দুঃখিত, আমাদের টেকনিক্যাল কিছু সমস্যা হচ্ছে।";
     }
 }
 
@@ -236,8 +251,11 @@ async function replyToComment(comment_id, text) {
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 
+// ==========================================
+// ⏰ অটো-পোস্টিং শিডিউল (প্রতি ৮ ঘণ্টা পর পর)
+// ==========================================
 const EIGHT_HOURS = 8 * 60 * 60 * 1000;
 setInterval(async () => {
-    console.log("⏰ 8 Hours passed! Running Auto-Poster...");
+    console.log("⏰ 8 Hours passed! Running Auto-Poster for M4+ Car Charger...");
     await autoPostToFacebook();
 }, EIGHT_HOURS);

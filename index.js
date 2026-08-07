@@ -12,6 +12,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // 🌟 আপনার প্রোডাক্টের আসল ছবির লিংকটি এখানে দিন
 const PRODUCT_IMAGE_URL = "https://eakub.pro.bd/charger.jpg"; 
 
+// 🌟 কাস্টমারদের সাথে আগের কথার হিস্ট্রি মনে রাখার জন্য মেমোরি
+const userSessions = new Map();
+
 // Cron-job.org এর জন্য রাউট
 app.get('/', (req, res) => {
     res.status(200).send("E-commerce Bot Server is awake!");
@@ -99,7 +102,8 @@ app.post('/webhook', async (req, res) => {
 
                     if (userMessage || audioBase64) {
                         try {
-                            let aiReply = await getGeminiResponse(userMessage, audioBase64);
+                            // 🌟 এখন getGeminiResponse ফাংশনে sender_psid পাঠানো হচ্ছে মেমোরির জন্য
+                            let aiReply = await getGeminiResponse(sender_psid, userMessage, audioBase64);
                             if (aiReply) {
                                 if (aiReply.includes('[SEND_IMAGE]')) {
                                     aiReply = aiReply.replace('[SEND_IMAGE]', '').trim();
@@ -124,7 +128,8 @@ app.post('/webhook', async (req, res) => {
 
                         if (sender_id !== page_id) {
                             try {
-                                let aiReply = await getGeminiResponse(message, null);
+                                // কমেন্টের ক্ষেত্রে মেমোরি ছাড়াই শুধু সিঙ্গেল রিপ্লাই হবে
+                                let aiReply = await getGeminiResponse("COMMENT", message, null);
                                 if (aiReply) await replyToComment(comment_id, aiReply);
                             } catch (e) {}
                         }
@@ -141,10 +146,11 @@ app.post('/webhook', async (req, res) => {
 const training_text = `You are a highly skilled and friendly sales assistant for an E-commerce Facebook page in Bangladesh selling the "M4+ 120W Retractable Car Charger".
 IMPORTANT RULES:
 1. You MUST reply ONLY in Bengali (using Bengali script). Do not use English script.
-2. Keep your replies friendly, polite, persuasive, and natural.
-3. Use emojis to make the conversation engaging.
-4. If a customer asks to see a real picture or photo of the product, you MUST include this exact secret tag in your reply: [SEND_IMAGE]. The system will use this tag to attach the photo.
-5. If a customer asks to order, ask for their: Full Name, Phone Number, and Full Delivery Address.
+2. Keep your replies conversational, short, and natural. Act like a real human chatting with a customer.
+3. CRITICAL: DO NOT repeat "Assalamualaikum" or welcome messages if you are already in the middle of a conversation with the user. Only greet them if it's the very first message.
+4. CRITICAL: DO NOT use markdown formatting like asterisks (**), bold, or italics. Facebook Messenger does not support it. Just use plain text and emojis.
+5. If a customer asks to see a real picture or photo of the product, you MUST include this exact secret tag in your reply: [SEND_IMAGE]. The system will use this tag to attach the photo.
+6. If a customer asks to order, ask for their: Full Name, Phone Number, and Full Delivery Address.
 
 PRODUCT DETAILS (M4+ 120W Retractable Car Charger Edition):
 - Key Features: 80cm auto-retractable cables. Solves messy cable problems in cars!
@@ -159,28 +165,48 @@ PRICE & DELIVERY:
 - Payment Method: Cash on Delivery (Pay after receiving the product).
 - Delivery Time: Within 72 hours across Bangladesh.`;
 
-async function getGeminiResponse(text, audioBase64) {
+async function getGeminiResponse(sender_psid, text, audioBase64) {
     if (!GEMINI_API_KEY) return "সিস্টেম এরর: API Key পাওয়া যায়নি!";
+    
+    // 🌟 কাস্টমারের আগের মেসেজ চেক করা
+    if (!userSessions.has(sender_psid)) {
+        userSessions.set(sender_psid, []);
+    }
+    let history = userSessions.get(sender_psid);
+    
+    let currentUserMessage = { role: "user", parts: [] };
+    
+    if (text) {
+        currentUserMessage.parts.push({ text: text });
+    } else if (audioBase64) {
+        currentUserMessage.parts.push({ text: "কাস্টমার একটি ভয়েস মেসেজ পাঠিয়েছেন। দয়া করে সেটি শুনুন এবং উপরের নির্দেশিকা অনুযায়ী বাংলায় রিপ্লাই দিন।" });
+        currentUserMessage.parts.push({ inlineData: { mimeType: "audio/mp4", data: audioBase64 } });
+    }
+
+    let contents = [...history, currentUserMessage];
     
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
     
-    let partsArray = [];
-    if (text) partsArray.push({ text: text });
-    else if (audioBase64) partsArray.push({ text: "কাস্টমার একটি ভয়েস মেসেজ পাঠিয়েছেন। দয়া করে সেটি শুনুন এবং উপরের নির্দেশিকা অনুযায়ী বাংলায় রিপ্লাই দিন।" });
-
-    if (audioBase64) {
-        partsArray.push({ inlineData: { mimeType: "audio/mp4", data: audioBase64 } });
-    }
-
     const payload = {
         systemInstruction: { parts: [{ text: training_text }] },
-        contents: [{ parts: partsArray }]
+        contents: contents
     };
 
     try {
         const data = await httpsPost(url, payload);
         if (data.candidates && data.candidates.length > 0) {
-            return data.candidates[0].content.parts[0].text;
+            let replyText = data.candidates[0].content.parts[0].text;
+            
+            // 🌟 মেসেজ এবং রিপ্লাই মেমোরিতে সেভ করে রাখা হচ্ছে (ভয়েস হলে শুধু টেক্সট সেভ হবে)
+            history.push({ role: "user", parts: [{ text: text || "[Voice Message]" }] });
+            history.push({ role: "model", parts: [{ text: replyText }] });
+            
+            // 🌟 মেমোরি যেন খুব বড় না হয়ে যায়, তাই শেষের ১০টি মেসেজ রাখা হচ্ছে
+            if (history.length > 10) {
+                userSessions.set(sender_psid, history.slice(history.length - 10));
+            }
+            
+            return replyText;
         }
         return "আমি এই মুহূর্তে উত্তর দিতে পারছি না, দয়া করে একটু পর আবার চেষ্টা করুন।";
     } catch (error) {
